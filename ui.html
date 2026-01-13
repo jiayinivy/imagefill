@@ -200,8 +200,18 @@
 
     // 接收来自主线程的消息
     window.onmessage = (event) => {
+        console.log('UI: 收到window.onmessage事件:', event);
+        console.log('UI: event.data:', event.data);
+        console.log('UI: event.data.pluginMessage:', event.data.pluginMessage);
+        
         const msg = event.data.pluginMessage;
-        if (!msg) return;
+        if (!msg) {
+            console.log('UI: 消息中没有pluginMessage，忽略');
+            return;
+        }
+        
+        console.log('UI: 提取的消息:', msg);
+        console.log('UI: 消息类型:', msg.type);
 
         // 处理 API 请求（主线程请求 UI 调用 API）
         if (msg.type === 'request-api') {

@@ -161,11 +161,14 @@ mg.ui.onmessage = async (msg) => {
             
             // 2. 请求 UI 调用 API 生成文本（因为主线程无法使用 fetch）
             console.log('准备请求UI调用API，选中图层数量:', count);
-            mg.ui.postMessage({ 
+            const requestMessage = { 
                 type: 'request-api', 
                 description: description, 
                 count: count 
-            });
+            };
+            console.log('主线程发送消息给UI:', JSON.stringify(requestMessage));
+            mg.ui.postMessage(requestMessage);
+            console.log('主线程消息已发送');
             
         } catch (error) {
             const errorMessage = error.message || '处理失败，请重试';
