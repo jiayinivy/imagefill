@@ -63,51 +63,85 @@ async function callQwenAPI(description, count) {
 function getSelectedTextLayers() {
     try {
         console.log('开始获取选中图层...');
-        console.log('mg对象:', typeof mg, mg);
-        console.log('mg.currentPage:', mg.currentPage);
-        console.log('mg.selection:', mg.selection);
         
         // 尝试不同的API方式获取选中图层
         let selection = [];
         
-        if (mg.currentPage && mg.currentPage.selection) {
-            console.log('使用 mg.currentPage.selection');
-            selection = mg.currentPage.selection;
-        } else if (mg.selection) {
-            console.log('使用 mg.selection');
-            selection = mg.selection;
-        } else {
-            console.log('尝试其他方式获取选中图层...');
-            // 尝试使用 mg.getSelection 或 mg.currentPage.getSelection
-            if (typeof mg.getSelection === 'function') {
-                console.log('使用 mg.getSelection()');
-                selection = mg.getSelection();
-            } else if (mg.currentPage && typeof mg.currentPage.getSelection === 'function') {
-                console.log('使用 mg.currentPage.getSelection()');
-                selection = mg.currentPage.getSelection();
-            } else {
-                console.log('未找到获取选中图层的API');
-                selection = [];
+        // 方法1: 使用 mg.currentPage.selection
+        try {
+            if (mg.currentPage) {
+                selection = mg.currentPage.selection;
+                console.log('使用 mg.currentPage.selection，数量:', selection ? selection.length : 0);
+            }
+        } catch (e) {
+            console.log('mg.currentPage.selection 失败:', e.message);
+        }
+        
+        // 方法2: 如果方法1失败，尝试 mg.selection
+        if (!selection || selection.length === 0) {
+            try {
+                if (mg.selection) {
+                    selection = mg.selection;
+                    console.log('使用 mg.selection，数量:', selection ? selection.length : 0);
+                }
+            } catch (e) {
+                console.log('mg.selection 失败:', e.message);
             }
         }
         
-        console.log('获取到的选中图层数量:', selection.length);
-        console.log('选中图层详情:', selection);
-        
-        // 筛选出文字图层
-        const textLayers = selection.filter(node => {
-            const isText = node && (node.type === 'TEXT' || node.type === 'text' || node.characters !== undefined);
-            if (isText) {
-                console.log('找到文字图层:', node.type, node);
+        // 方法3: 尝试使用函数
+        if (!selection || selection.length === 0) {
+            try {
+                if (typeof mg.getSelection === 'function') {
+                    selection = mg.getSelection();
+                    console.log('使用 mg.getSelection()，数量:', selection ? selection.length : 0);
+                }
+            } catch (e) {
+                console.log('mg.getSelection() 失败:', e.message);
             }
-            return isText;
-        });
+        }
+        
+        if (!selection || selection.length === 0) {
+            console.log('未获取到选中图层');
+            return [];
+        }
+        
+        console.log('获取到的选中图层数量:', selection.length);
+        
+        // 筛选出文字图层（避免直接访问对象属性导致 unwrap 错误）
+        const textLayers = [];
+        for (let i = 0; i < selection.length; i++) {
+            try {
+                const node = selection[i];
+                // 尝试安全地检查节点类型
+                let nodeType = null;
+                let hasCharacters = false;
+                
+                try {
+                    nodeType = node.type;
+                } catch (e) {
+                    // 忽略错误
+                }
+                
+                try {
+                    hasCharacters = node.characters !== undefined;
+                } catch (e) {
+                    // 忽略错误
+                }
+                
+                if (node && (nodeType === 'TEXT' || nodeType === 'text' || hasCharacters)) {
+                    textLayers.push(node);
+                    console.log('找到文字图层:', i, nodeType);
+                }
+            } catch (e) {
+                console.log('检查节点时出错:', e.message);
+            }
+        }
         
         console.log('筛选后的文字图层数量:', textLayers.length);
         return textLayers;
     } catch (error) {
-        console.error('获取选中图层失败:', error);
-        console.error('错误详情:', error.message, error.stack);
+        console.error('获取选中图层失败:', error.message);
         return [];
     }
 }
