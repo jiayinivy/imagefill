@@ -181,18 +181,21 @@ mg.ui.onmessage = async (msg) => {
     }
     
     // 处理来自 UI 的 API 响应
-    if (msg.type === 'api-response') {
-        console.log('收到API响应:', msg);
+    if (actualMsg.type === 'api-response') {
+        console.log('收到API响应:', actualMsg);
+        console.log('API响应内容:', JSON.stringify(actualMsg));
         
-        if (msg.error) {
-            mg.ui.postMessage({ type: 'error', message: msg.error });
+        if (actualMsg.error) {
+            console.log('API响应包含错误:', actualMsg.error);
+            mg.ui.postMessage({ type: 'error', message: actualMsg.error });
             if (mg.notify) {
-                mg.notify(msg.error);
+                mg.notify(actualMsg.error);
             }
             return;
         }
         
-        if (!msg.texts || !Array.isArray(msg.texts)) {
+        if (!actualMsg.texts || !Array.isArray(actualMsg.texts)) {
+            console.error('API返回数据格式错误:', actualMsg);
             const errorMsg = 'API返回数据格式错误';
             mg.ui.postMessage({ type: 'error', message: errorMsg });
             if (mg.notify) {
@@ -201,10 +204,16 @@ mg.ui.onmessage = async (msg) => {
             return;
         }
         
+        console.log('API返回文本数组:', actualMsg.texts);
+        console.log('文本数量:', actualMsg.texts.length);
+        
         // 获取选中的文字图层
+        console.log('开始获取选中的文字图层...');
         const textLayers = getSelectedTextLayers();
+        console.log('获取到的文字图层数量:', textLayers.length);
         
         if (textLayers.length === 0) {
+            console.error('未找到选中的文字图层');
             const errorMsg = '未找到选中的文字图层';
             mg.ui.postMessage({ type: 'error', message: errorMsg });
             if (mg.notify) {
@@ -215,19 +224,22 @@ mg.ui.onmessage = async (msg) => {
         
         // 替换文字图层内容
         console.log('开始替换文字图层内容...');
-        for (let i = 0; i < textLayers.length && i < msg.texts.length; i++) {
+        for (let i = 0; i < textLayers.length && i < actualMsg.texts.length; i++) {
             try {
-                replaceTextLayerContent(textLayers[i], msg.texts[i]);
-                console.log(`替换图层 ${i}: ${msg.texts[i]}`);
+                console.log(`准备替换图层 ${i}，文本: ${actualMsg.texts[i]}`);
+                replaceTextLayerContent(textLayers[i], actualMsg.texts[i]);
+                console.log(`替换图层 ${i} 成功: ${actualMsg.texts[i]}`);
             } catch (e) {
-                console.error(`替换图层 ${i} 失败:`, e.message);
+                console.error(`替换图层 ${i} 失败:`, e.message, e.stack);
             }
         }
         
         // 发送成功消息
-        mg.ui.postMessage({ type: 'success', message: `成功填充${msg.texts.length}个文字图层` });
+        console.log('所有图层替换完成，发送成功消息');
+        mg.ui.postMessage({ type: 'success', message: `成功填充${actualMsg.texts.length}个文字图层` });
         if (mg.notify) {
-            mg.notify(`成功填充${msg.texts.length}个文字图层`);
+            mg.notify(`成功填充${actualMsg.texts.length}个文字图层`);
         }
+        console.log('成功消息已发送');
     }
 }
