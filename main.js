@@ -108,9 +108,22 @@ function replaceTextLayerContent(layer, text) {
 console.log('设置消息监听器...');
 mg.ui.onmessage = async (msg) => {
     console.log('收到UI消息:', msg);
-    if (msg.type === 'submit') {
-        console.log('处理提交请求，描述:', msg.text);
-        const description = msg.text;
+    console.log('消息类型:', typeof msg);
+    console.log('消息内容:', JSON.stringify(msg));
+    
+    // 检查消息格式，可能是包装在 pluginMessage 中
+    let actualMsg = msg;
+    if (msg && msg.pluginMessage) {
+        console.log('消息被包装在 pluginMessage 中，提取实际消息');
+        actualMsg = msg.pluginMessage;
+    }
+    
+    console.log('实际消息:', actualMsg);
+    console.log('消息类型字段:', actualMsg.type);
+    
+    if (actualMsg.type === 'submit') {
+        console.log('处理提交请求，描述:', actualMsg.text);
+        const description = actualMsg.text;
         
         // 发送加载状态
         mg.ui.postMessage({ type: 'loading', message: '正在处理...' });
