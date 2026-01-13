@@ -2,8 +2,7 @@
 mg.showUI(__html__)
 
 // 调用Vercel代理API生成文本
-// 注意：需要将 YOUR_VERCEL_URL 替换为实际的Vercel部署地址
-const PROXY_URL = 'YOUR_VERCEL_URL/api/qwen-proxy';
+const PROXY_URL = 'https://textfill-ten.vercel.app/api/qwen-proxy';
 
 async function callQwenAPI(description, count) {
     try {
