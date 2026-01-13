@@ -3,62 +3,6 @@ console.log('插件初始化开始...');
 mg.showUI(__html__)
 console.log('插件UI已显示');
 
-// 调用Vercel代理API生成文本
-const PROXY_URL = 'https://textfill-ten.vercel.app/api/qwen-proxy';
-
-async function callQwenAPI(description, count) {
-    try {
-        console.log('开始调用代理API:', PROXY_URL);
-        console.log('请求参数:', { description, count });
-        
-        const requestBody = {
-            description: description,
-            count: count
-        };
-        
-        console.log('发送请求...');
-        const response = await fetch(PROXY_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(requestBody)
-        });
-        
-        console.log('收到响应:', response.status, response.statusText);
-        
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('API响应错误:', response.status, errorText);
-            let errorData = {};
-            try {
-                errorData = JSON.parse(errorText);
-            } catch (e) {
-                errorData = { error: errorText };
-            }
-            throw new Error(errorData.error || `API请求失败: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        console.log('API返回数据:', data);
-        
-        if (!data.success || !data.texts || !Array.isArray(data.texts)) {
-            throw new Error(data.error || 'API返回数据格式错误');
-        }
-        
-        if (data.texts.length < count) {
-            throw new Error(`生成的文本数量不足，需要${count}个，实际生成${data.texts.length}个`);
-        }
-        
-        console.log('成功获取文本:', data.texts);
-        return data.texts;
-    } catch (error) {
-        console.error('调用代理API失败:', error);
-        console.error('错误详情:', error.message, error.stack);
-        throw error;
-    }
-}
-
 // 获取选中的文字图层
 function getSelectedTextLayers() {
     try {
@@ -215,24 +159,13 @@ mg.ui.onmessage = async (msg) => {
             
             const count = textLayers.length;
             
-            // 2. 调用阿里云千问API生成文本
-            console.log('准备调用API，选中图层数量:', count);
-            mg.ui.postMessage({ type: 'loading', message: `正在生成${count}个文本...` });
-            
-            console.log('开始调用 callQwenAPI...');
-            const generatedTexts = await callQwenAPI(description, count);
-            console.log('API调用完成，返回文本:', generatedTexts);
-            
-            // 3. 替换文字图层内容
-            for (let i = 0; i < textLayers.length && i < generatedTexts.length; i++) {
-                replaceTextLayerContent(textLayers[i], generatedTexts[i]);
-            }
-            
-            // 4. 发送成功消息
-            mg.ui.postMessage({ type: 'success', message: `成功填充${generatedTexts.length}个文字图层` });
-            if (mg.notify) {
-                mg.notify(`成功填充${generatedTexts.length}个文字图层`);
-            }
+            // 2. 请求 UI 调用 API 生成文本（因为主线程无法使用 fetch）
+            console.log('准备请求UI调用API，选中图层数量:', count);
+            mg.ui.postMessage({ 
+                type: 'request-api', 
+                description: description, 
+                count: count 
+            });
             
         } catch (error) {
             const errorMessage = error.message || '处理失败，请重试';
@@ -241,6 +174,57 @@ mg.ui.onmessage = async (msg) => {
                 mg.notify(errorMessage);
             }
             console.error('处理失败:', error);
+        }
+    }
+    
+    // 处理来自 UI 的 API 响应
+    if (msg.type === 'api-response') {
+        console.log('收到API响应:', msg);
+        
+        if (msg.error) {
+            mg.ui.postMessage({ type: 'error', message: msg.error });
+            if (mg.notify) {
+                mg.notify(msg.error);
+            }
+            return;
+        }
+        
+        if (!msg.texts || !Array.isArray(msg.texts)) {
+            const errorMsg = 'API返回数据格式错误';
+            mg.ui.postMessage({ type: 'error', message: errorMsg });
+            if (mg.notify) {
+                mg.notify(errorMsg);
+            }
+            return;
+        }
+        
+        // 获取选中的文字图层
+        const textLayers = getSelectedTextLayers();
+        
+        if (textLayers.length === 0) {
+            const errorMsg = '未找到选中的文字图层';
+            mg.ui.postMessage({ type: 'error', message: errorMsg });
+            if (mg.notify) {
+                mg.notify(errorMsg);
+            }
+            return;
+        }
+        
+        // 替换文字图层内容
+        console.log('开始替换文字图层内容...');
+        for (let i = 0; i < textLayers.length && i < msg.texts.length; i++) {
+            try {
+                replaceTextLayerContent(textLayers[i], msg.texts[i]);
+                console.log(`替换图层 ${i}: ${msg.texts[i]}`);
+            } catch (e) {
+                console.error(`替换图层 ${i} 失败:`, e.message);
+            }
+        }
+        
+        // 发送成功消息
+        mg.ui.postMessage({ type: 'success', message: `成功填充${msg.texts.length}个文字图层` });
+        if (mg.notify) {
+            mg.notify(`成功填充${msg.texts.length}个文字图层`);
         }
     }
 }

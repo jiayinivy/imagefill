@@ -129,6 +129,59 @@
         message.className = 'message';
     }
 
+    // Vercel 代理 API URL
+    const PROXY_URL = 'https://textfill-ten.vercel.app/api/qwen-proxy';
+
+    // 调用 API 生成文本（在 UI 中调用，因为可以使用 fetch）
+    async function callQwenAPI(description, count) {
+        try {
+            console.log('UI: 开始调用代理API:', PROXY_URL);
+            console.log('UI: 请求参数:', { description, count });
+            
+            const response = await fetch(PROXY_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    description: description,
+                    count: count
+                })
+            });
+            
+            console.log('UI: 收到响应:', response.status, response.statusText);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('UI: API响应错误:', response.status, errorText);
+                let errorData = {};
+                try {
+                    errorData = JSON.parse(errorText);
+                } catch (e) {
+                    errorData = { error: errorText };
+                }
+                throw new Error(errorData.error || `API请求失败: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            console.log('UI: API返回数据:', data);
+            
+            if (!data.success || !data.texts || !Array.isArray(data.texts)) {
+                throw new Error(data.error || 'API返回数据格式错误');
+            }
+            
+            if (data.texts.length < count) {
+                throw new Error(`生成的文本数量不足，需要${count}个，实际生成${data.texts.length}个`);
+            }
+            
+            console.log('UI: 成功获取文本:', data.texts);
+            return data.texts;
+        } catch (error) {
+            console.error('UI: 调用代理API失败:', error);
+            throw error;
+        }
+    }
+
     // 提交按钮点击事件
     submitBtn.addEventListener('click', function() {
         const text = textInput.value.trim();
@@ -149,6 +202,35 @@
     window.onmessage = (event) => {
         const msg = event.data.pluginMessage;
         if (!msg) return;
+
+        // 处理 API 请求（主线程请求 UI 调用 API）
+        if (msg.type === 'request-api') {
+            console.log('UI: 收到API请求:', msg);
+            showMessage(`正在生成${msg.count}个文本...`, 'loading');
+            
+            callQwenAPI(msg.description, msg.count)
+                .then(texts => {
+                    console.log('UI: API调用成功，发送结果给主线程');
+                    // 将结果发送回主线程
+                    parent.postMessage({ 
+                        pluginMessage: { 
+                            type: 'api-response', 
+                            texts: texts 
+                        } 
+                    }, '*');
+                })
+                .catch(error => {
+                    console.error('UI: API调用失败:', error);
+                    // 发送错误给主线程
+                    parent.postMessage({ 
+                        pluginMessage: { 
+                            type: 'api-response', 
+                            error: error.message || 'API调用失败' 
+                        } 
+                    }, '*');
+                });
+            return;
+        }
 
         submitBtn.disabled = false;
 
