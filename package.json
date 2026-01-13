@@ -1,0 +1,18 @@
+{
+  "name": "textfill-proxy",
+  "version": "1.0.0",
+  "description": "MasterGo文本填充插件 - Vercel代理服务器",
+  "main": "api/qwen-proxy.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "keywords": [
+    "mastergo",
+    "plugin",
+    "proxy",
+    "qwen"
+  ],
+  "author": "",
+  "license": "MIT"
+}

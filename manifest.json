@@ -1,0 +1,7 @@
+{
+  "name": "textfill",
+  "id": 182311809368242,
+  "api": "1.0.0",
+  "main": "./main.js",
+  "ui": "./ui.html"
+}

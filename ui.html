@@ -1,0 +1,167 @@
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    body {
+        background-color: #FFFFFF;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        padding: 20px;
+    }
+
+    .title {
+        font-size: 14px;
+        font-weight: 500;
+        color: rgba(0, 0, 0, 0.85);
+        margin-bottom: 8px;
+    }
+
+    .description {
+        font-size: 12px;
+        font-weight: 400;
+        color: rgba(0, 0, 0, 0.65);
+        margin-bottom: 16px;
+        line-height: 1.5;
+    }
+
+    .config-label {
+        font-size: 12px;
+        font-weight: 400;
+        color: rgba(0, 0, 0, 0.65);
+        margin-bottom: 8px;
+    }
+
+    .textarea {
+        width: 100%;
+        min-height: 100px;
+        padding: 8px 12px;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+        border-radius: 4px;
+        font-size: 12px;
+        font-family: inherit;
+        resize: vertical;
+        outline: none;
+        transition: border-color 0.2s;
+        margin-bottom: 16px;
+    }
+
+    .textarea:focus {
+        border-color: #2E74FF;
+    }
+
+    .submit-button {
+        width: 100%;
+        height: 28px;
+        background-color: #2E74FF;
+        border: none;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 400;
+        color: #FFFFFF;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+
+    .submit-button:hover {
+        background-color: #1e5fcc;
+    }
+
+    .submit-button:active {
+        background-color: #1550b3;
+    }
+
+    .submit-button:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+    }
+
+    .message {
+        font-size: 12px;
+        font-weight: 400;
+        padding: 8px 12px;
+        border-radius: 4px;
+        margin-bottom: 12px;
+        display: none;
+    }
+
+    .message.show {
+        display: block;
+    }
+
+    .message.loading {
+        background-color: #E6F4FF;
+        color: #2E74FF;
+    }
+
+    .message.success {
+        background-color: #F6FFED;
+        color: #52C41A;
+    }
+
+    .message.error {
+        background-color: #FFF2E8;
+        color: #FF7A45;
+    }
+</style>
+
+<h1 class="title">文本填充</h1>
+<p class="description">请描述需要填充的文本，将自动生成符合描述的内容</p>
+<label class="config-label">文本描述</label>
+<textarea class="textarea" id="textInput" placeholder="请输入文本描述..."></textarea>
+<div class="message" id="message"></div>
+<button class="submit-button" id="submitBtn">提交</button>
+
+<script>
+    const textInput = document.getElementById('textInput');
+    const submitBtn = document.getElementById('submitBtn');
+    const message = document.getElementById('message');
+
+    // 显示消息
+    function showMessage(text, type) {
+        message.textContent = text;
+        message.className = 'message show ' + type;
+    }
+
+    // 隐藏消息
+    function hideMessage() {
+        message.className = 'message';
+    }
+
+    // 提交按钮点击事件
+    submitBtn.addEventListener('click', function() {
+        const text = textInput.value.trim();
+        if (!text) {
+            showMessage('请输入文本描述', 'error');
+            return;
+        }
+
+        // 禁用按钮并显示加载状态
+        submitBtn.disabled = true;
+        showMessage('正在处理...', 'loading');
+
+        // 向主线程发送消息
+        parent.postMessage({ pluginMessage: { type: 'submit', text: text } }, '*');
+    });
+
+    // 接收来自主线程的消息
+    window.onmessage = (event) => {
+        const msg = event.data.pluginMessage;
+        if (!msg) return;
+
+        submitBtn.disabled = false;
+
+        if (msg.type === 'loading') {
+            showMessage(msg.message || '正在处理...', 'loading');
+        } else if (msg.type === 'success') {
+            showMessage(msg.message || '操作成功', 'success');
+            // 3秒后隐藏成功消息
+            setTimeout(() => {
+                hideMessage();
+            }, 3000);
+        } else if (msg.type === 'error') {
+            showMessage(msg.message || '操作失败', 'error');
+        }
+    };
+</script>
