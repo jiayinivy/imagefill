@@ -1,7 +1,7 @@
 // Vercel Serverless Function - 阿里云百炼API代理
 // 路径: /api/qwen-proxy
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
     // 设置CORS头，允许MasterGo插件调用
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
