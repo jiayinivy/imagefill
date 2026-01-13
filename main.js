@@ -64,74 +64,80 @@ function getSelectedTextLayers() {
     try {
         console.log('开始获取选中图层...');
         
-        // 尝试不同的API方式获取选中图层
+        // 直接使用 mg.currentPage.selection（这是 MasterGo 的标准 API）
         let selection = [];
         
-        // 方法1: 使用 mg.currentPage.selection
         try {
-            if (mg.currentPage) {
-                selection = mg.currentPage.selection;
-                console.log('使用 mg.currentPage.selection，数量:', selection ? selection.length : 0);
+            // 检查 mg.currentPage 是否存在
+            if (!mg.currentPage) {
+                console.log('mg.currentPage 不存在');
+                return [];
             }
+            
+            // 获取选中图层
+            selection = mg.currentPage.selection;
+            
+            // 检查 selection 是否为数组
+            if (!Array.isArray(selection)) {
+                console.log('selection 不是数组:', typeof selection);
+                // 如果不是数组，尝试转换为数组
+                if (selection) {
+                    selection = [selection];
+                } else {
+                    selection = [];
+                }
+            }
+            
+            console.log('获取到的选中图层数量:', selection.length);
+            
+            if (selection.length === 0) {
+                console.log('没有选中任何图层');
+                return [];
+            }
+            
         } catch (e) {
-            console.log('mg.currentPage.selection 失败:', e.message);
-        }
-        
-        // 方法2: 如果方法1失败，尝试 mg.selection
-        if (!selection || selection.length === 0) {
-            try {
-                if (mg.selection) {
-                    selection = mg.selection;
-                    console.log('使用 mg.selection，数量:', selection ? selection.length : 0);
-                }
-            } catch (e) {
-                console.log('mg.selection 失败:', e.message);
-            }
-        }
-        
-        // 方法3: 尝试使用函数
-        if (!selection || selection.length === 0) {
-            try {
-                if (typeof mg.getSelection === 'function') {
-                    selection = mg.getSelection();
-                    console.log('使用 mg.getSelection()，数量:', selection ? selection.length : 0);
-                }
-            } catch (e) {
-                console.log('mg.getSelection() 失败:', e.message);
-            }
-        }
-        
-        if (!selection || selection.length === 0) {
-            console.log('未获取到选中图层');
+            console.error('获取 selection 时出错:', e.message);
             return [];
         }
         
-        console.log('获取到的选中图层数量:', selection.length);
-        
-        // 筛选出文字图层（避免直接访问对象属性导致 unwrap 错误）
+        // 筛选出文字图层
         const textLayers = [];
         for (let i = 0; i < selection.length; i++) {
             try {
                 const node = selection[i];
-                // 尝试安全地检查节点类型
-                let nodeType = null;
-                let hasCharacters = false;
+                if (!node) continue;
                 
+                // 安全地检查节点类型
+                let nodeType = null;
                 try {
                     nodeType = node.type;
                 } catch (e) {
-                    // 忽略错误
+                    // 如果无法获取 type，尝试其他方式
                 }
                 
-                try {
-                    hasCharacters = node.characters !== undefined;
-                } catch (e) {
-                    // 忽略错误
+                // 检查是否为文字图层
+                // MasterGo 中文字图层的 type 可能是 'TEXT' 或其他值
+                // 也可以通过检查是否有 characters 属性来判断
+                let isTextLayer = false;
+                
+                if (nodeType === 'TEXT' || nodeType === 'text') {
+                    isTextLayer = true;
+                } else {
+                    // 尝试检查是否有 characters 属性（文字图层的特征）
+                    try {
+                        if (node.characters !== undefined) {
+                            isTextLayer = true;
+                        }
+                    } catch (e) {
+                        // 忽略错误
+                    }
                 }
                 
-                if (node && (nodeType === 'TEXT' || nodeType === 'text' || hasCharacters)) {
+                if (isTextLayer) {
                     textLayers.push(node);
-                    console.log('找到文字图层:', i, nodeType);
+                    console.log('找到文字图层:', i, nodeType || 'unknown');
+                } else {
+                    console.log('跳过非文字图层:', i, nodeType || 'unknown');
                 }
             } catch (e) {
                 console.log('检查节点时出错:', e.message);
