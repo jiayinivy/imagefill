@@ -62,26 +62,52 @@ async function callQwenAPI(description, count) {
 // 获取选中的文字图层
 function getSelectedTextLayers() {
     try {
+        console.log('开始获取选中图层...');
+        console.log('mg对象:', typeof mg, mg);
+        console.log('mg.currentPage:', mg.currentPage);
+        console.log('mg.selection:', mg.selection);
+        
         // 尝试不同的API方式获取选中图层
         let selection = [];
         
         if (mg.currentPage && mg.currentPage.selection) {
+            console.log('使用 mg.currentPage.selection');
             selection = mg.currentPage.selection;
         } else if (mg.selection) {
+            console.log('使用 mg.selection');
             selection = mg.selection;
         } else {
-            // 如果以上都不存在，尝试使用其他方式
-            selection = [];
+            console.log('尝试其他方式获取选中图层...');
+            // 尝试使用 mg.getSelection 或 mg.currentPage.getSelection
+            if (typeof mg.getSelection === 'function') {
+                console.log('使用 mg.getSelection()');
+                selection = mg.getSelection();
+            } else if (mg.currentPage && typeof mg.currentPage.getSelection === 'function') {
+                console.log('使用 mg.currentPage.getSelection()');
+                selection = mg.currentPage.getSelection();
+            } else {
+                console.log('未找到获取选中图层的API');
+                selection = [];
+            }
         }
+        
+        console.log('获取到的选中图层数量:', selection.length);
+        console.log('选中图层详情:', selection);
         
         // 筛选出文字图层
         const textLayers = selection.filter(node => {
-            return node && (node.type === 'TEXT' || node.type === 'text' || node.characters !== undefined);
+            const isText = node && (node.type === 'TEXT' || node.type === 'text' || node.characters !== undefined);
+            if (isText) {
+                console.log('找到文字图层:', node.type, node);
+            }
+            return isText;
         });
         
+        console.log('筛选后的文字图层数量:', textLayers.length);
         return textLayers;
     } catch (error) {
         console.error('获取选中图层失败:', error);
+        console.error('错误详情:', error.message, error.stack);
         return [];
     }
 }
