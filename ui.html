@@ -138,6 +138,7 @@
             console.log('UI: 开始调用代理API:', PROXY_URL);
             console.log('UI: 请求参数:', { description, count });
             
+            console.log('UI: 发送fetch请求...');
             const response = await fetch(PROXY_URL, {
                 method: 'POST',
                 headers: {
@@ -150,6 +151,7 @@
             });
             
             console.log('UI: 收到响应:', response.status, response.statusText);
+            console.log('UI: 响应头:', response.headers);
             
             if (!response.ok) {
                 const errorText = await response.text();
