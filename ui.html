@@ -204,9 +204,10 @@
         console.log('UI: event.data:', event.data);
         console.log('UI: event.data.pluginMessage:', event.data.pluginMessage);
         
-        const msg = event.data.pluginMessage;
+        // 主线程发送的消息可能在 event.data 中，也可能在 event.data.pluginMessage 中
+        let msg = event.data.pluginMessage || event.data;
         if (!msg) {
-            console.log('UI: 消息中没有pluginMessage，忽略');
+            console.log('UI: 无法提取消息，忽略');
             return;
         }
         
