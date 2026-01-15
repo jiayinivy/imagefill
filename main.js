@@ -446,9 +446,22 @@ mg.ui.onmessage = async (msg) => {
             
             console.log(`形状图层已设置为图片图层的蒙版`);
             
-            // 4. 将图片图层和形状图层组合成一个组（Frame）
-            // 创建组
-            const group = mg.createFrame();
+            // 4. 将图片图层和形状图层组合成一个组（Group）
+            // 创建组（使用createGroup而不是createFrame）
+            let group;
+            try {
+                // 尝试使用createGroup方法
+                if (mg.createGroup && typeof mg.createGroup === 'function') {
+                    group = mg.createGroup();
+                } else {
+                    // 如果没有createGroup，使用createFrame但可能需要设置类型
+                    group = mg.createFrame();
+                }
+            } catch (e) {
+                console.warn('无法使用createGroup，使用createFrame:', e);
+                group = mg.createFrame();
+            }
+            
             group.x = shapeX;
             group.y = shapeY;
             group.width = shapeWidth;
