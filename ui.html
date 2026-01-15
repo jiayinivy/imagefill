@@ -403,8 +403,11 @@
 
     // 下载图片数据并发送给主线程
     async function downloadImages(images, fillMode) {
-        try {
-            for (let i = 0; i < images.length; i++) {
+        let successCount = 0;
+        let failCount = 0;
+        
+        for (let i = 0; i < images.length; i++) {
+            try {
                 const image = images[i];
                 console.log(`UI: 开始下载图片 ${i + 1}/${images.length}: ${image.url}`);
                 showMessage(`正在下载图片 ${i + 1}/${images.length}...`, 'loading');
@@ -430,12 +433,26 @@
                         index: i
                     } 
                 }, '*');
+                
+                successCount++;
+            } catch (error) {
+                console.error(`UI: 下载图片 ${i} 失败:`, error);
+                failCount++;
+                // 发送错误信息给主线程，但继续处理其他图片
+                parent.postMessage({ 
+                    pluginMessage: { 
+                        type: 'image-error', 
+                        index: i,
+                        error: error.message || '下载失败'
+                    } 
+                }, '*');
             }
-            
-            console.log('UI: 所有图片下载完成');
-        } catch (error) {
-            console.error('UI: 下载图片时出错:', error);
-            throw error;
+        }
+        
+        console.log(`UI: 所有图片下载完成，成功: ${successCount}, 失败: ${failCount}`);
+        
+        if (failCount > 0) {
+            showMessage(`下载完成，${successCount} 张成功，${failCount} 张失败`, 'error');
         }
     }
 </script>

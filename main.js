@@ -231,31 +231,30 @@ mg.ui.onmessage = async (msg) => {
             // 设置图片填充（Image as Mask）
             console.log(`设置图层 ${imageIndex} 的图片填充，模式: ${fillMode}`);
             
-            // 克隆 fills 数组
-            const newFills = JSON.parse(JSON.stringify(layer.fills || []));
-            
-            // 创建图片填充对象
+            // 创建图片填充对象，清空所有原有填充，只保留图片填充
+            // 根据 MasterGo API，图片填充对象需要包含以下属性
             const imageFill = {
                 type: 'IMAGE',
                 scaleMode: fillMode, // FILL, STRETCH, TILE
                 imageRef: imageHandle.href
             };
             
-            // 替换或添加图片填充
-            // 如果已有图片填充，替换第一个；否则添加
-            const imageFillIndex = newFills.findIndex(fill => fill.type === 'IMAGE');
-            if (imageFillIndex >= 0) {
-                newFills[imageFillIndex] = imageFill;
-            } else {
-                newFills.unshift(imageFill); // 添加到最前面
-            }
-            
+            // 完全替换 fills 数组，只保留图片填充，移除所有颜色填充
+            // 使用新的数组完全替换，避免格式问题
+            const newFills = [];
+            newFills.push(imageFill);
             layer.fills = newFills;
+            
+            console.log(`图层 ${imageIndex} fills 已设置，数量: ${layer.fills.length}`);
             
             console.log(`图层 ${imageIndex} 填充成功`);
             
             // 检查是否所有图片都已处理
-            if (imageIndex === currentShapeLayers.length - 1) {
+            // 注意：imageIndex 是从 0 开始的，所以最后一个索引是 length - 1
+            const isLastImage = imageIndex === currentShapeLayers.length - 1;
+            console.log(`图片 ${imageIndex + 1}/${currentShapeLayers.length} 处理完成，是否最后一张: ${isLastImage}`);
+            
+            if (isLastImage) {
                 // 发送成功消息
                 console.log('所有图层填充完成，发送成功消息');
                 mg.ui.postMessage({ type: 'success', message: `成功填充${currentShapeLayers.length}个形状图层` });
@@ -268,10 +267,20 @@ mg.ui.onmessage = async (msg) => {
             }
             
         } catch (error) {
-            console.error('处理图片数据失败:', error);
-            mg.ui.postMessage({ type: 'error', message: `填充失败: ${error.message}` });
-            if (mg.notify) {
-                mg.notify(`填充失败: ${error.message}`);
+            console.error(`处理图片数据失败 (index: ${imageIndex}):`, error);
+            console.error('错误堆栈:', error.stack);
+            
+            // 即使出错，也检查是否所有图片都已处理
+            const isLastImage = imageIndex === currentShapeLayers.length - 1;
+            if (isLastImage) {
+                mg.ui.postMessage({ type: 'error', message: `填充失败: ${error.message}` });
+                if (mg.notify) {
+                    mg.notify(`填充失败: ${error.message}`);
+                }
+                currentShapeLayers = [];
+            } else {
+                // 不是最后一张，继续处理下一张，但记录错误
+                console.warn(`图片 ${imageIndex} 处理失败，但继续处理其他图片`);
             }
         }
     }
