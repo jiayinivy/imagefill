@@ -5,8 +5,6 @@ console.log('插件UI已显示');
 
 // 保存当前处理的图层引用，避免异步处理时选中状态丢失
 let currentShapeLayers = [];
-// 保存形状样式信息（尺寸、圆角、类型等）
-let shapeStyles = [];
 
 // 获取选中的形状图层（排除文本图层）
 function getSelectedShapeLayers() {
@@ -56,10 +54,8 @@ function getSelectedShapeLayers() {
             return [];
         }
         
-        // 过滤出形状图层（排除文本图层）并提取样式信息
+        // 过滤出形状图层（排除文本图层）
         const shapeLayers = [];
-        const styles = [];
-        
         for (let i = 0; i < selection.length; i++) {
             try {
                 const node = selection[i];
@@ -71,20 +67,7 @@ function getSelectedShapeLayers() {
                     // 检查是否有 fills 属性（形状图层通常有 fills 属性）
                     if (node.fills !== undefined) {
                         shapeLayers.push(node);
-                        
-                        // 提取形状样式信息
-                        const style = {
-                            type: nodeType, // RECTANGLE, ELLIPSE 等
-                            width: node.width || 120,
-                            height: node.height || 120,
-                            x: node.x || 0,
-                            y: node.y || 0,
-                            cornerRadius: node.cornerRadius || 0, // 圆角半径（仅矩形）
-                            fills: node.fills ? JSON.parse(JSON.stringify(node.fills)) : []
-                        };
-                        styles.push(style);
-                        
-                        console.log(`添加形状图层 ${i}，类型: ${nodeType}，尺寸: ${style.width}×${style.height}`);
+                        console.log(`添加形状图层 ${i}，类型: ${nodeType}`);
                     }
                 }
             } catch (e) {
@@ -93,7 +76,7 @@ function getSelectedShapeLayers() {
         }
         
         console.log('筛选后的形状图层数量:', shapeLayers.length);
-        return { layers: shapeLayers, styles: styles };
+        return shapeLayers;
     } catch (error) {
         console.error('获取选中图层失败:', error.message);
         return [];
@@ -120,16 +103,13 @@ mg.ui.onmessage = async (msg) => {
     if (actualMsg.type === 'submit') {
         console.log('处理提交请求，关键词:', actualMsg.keyword);
         const keyword = actualMsg.keyword;
-        const fillMode = actualMsg.fillMode || 'FILL';
         
         // 发送加载状态
         mg.ui.postMessage({ type: 'loading', message: '正在处理...' });
         
         try {
-            // 1. 获取选中的形状图层和样式信息
-            const result = getSelectedShapeLayers();
-            const shapeLayers = result.layers;
-            const styles = result.styles;
+            // 1. 立即锁定并保存选中的形状图层（锁定初始选择）
+            const shapeLayers = getSelectedShapeLayers();
             
             if (shapeLayers.length === 0) {
                 mg.ui.postMessage({ type: 'error', message: '请先选中形状图层（矩形、圆形等）' });
@@ -139,9 +119,10 @@ mg.ui.onmessage = async (msg) => {
                 return;
             }
             
-            // 保存图层引用和样式信息
-            currentShapeLayers = shapeLayers;
-            shapeStyles = styles;
+            // 立即保存图层引用，锁定初始选择
+            // 即使后续用户切换选中，也不影响当前操作
+            currentShapeLayers = shapeLayers.slice(); // 复制数组，避免引用被修改
+            console.log(`已锁定 ${currentShapeLayers.length} 个形状图层`);
             
             const count = shapeLayers.length;
             
@@ -150,8 +131,7 @@ mg.ui.onmessage = async (msg) => {
             const requestMessage = { 
                 type: 'request-api', 
                 keyword: keyword,
-                count: count,
-                fillMode: fillMode
+                count: count
             };
             console.log('主线程发送消息给UI:', JSON.stringify(requestMessage));
             mg.ui.postMessage(requestMessage);
@@ -194,6 +174,7 @@ mg.ui.onmessage = async (msg) => {
         console.log('API返回图片数组:', actualMsg.images);
         console.log('图片数量:', actualMsg.images.length);
         
+        // 验证已锁定的图层引用
         if (!currentShapeLayers || currentShapeLayers.length === 0) {
             console.error('图层引用已丢失');
             const errorMsg = '图层引用已丢失，请重新选择图层并重试';
@@ -204,14 +185,11 @@ mg.ui.onmessage = async (msg) => {
             return;
         }
         
-        const fillMode = actualMsg.fillMode || 'FILL';
-        
         // 请求 UI 下载图片数据
         console.log('请求UI下载图片数据...');
         mg.ui.postMessage({
             type: 'download-images',
             images: actualMsg.images,
-            fillMode: fillMode,
             layerCount: currentShapeLayers.length
         });
     }
@@ -221,9 +199,8 @@ mg.ui.onmessage = async (msg) => {
         console.log('收到图片数据:', actualMsg);
         
         try {
-            // 使用保存的图层引用，而不是重新获取
+            // 使用已锁定的图层引用（不重新获取，确保使用初始选择）
             const imageDataArray = actualMsg.imageData; // 普通数组
-            const fillMode = actualMsg.fillMode || 'FILL';
             const imageIndex = actualMsg.index || 0;
             
             if (!currentShapeLayers || currentShapeLayers.length === 0) {
@@ -232,135 +209,113 @@ mg.ui.onmessage = async (msg) => {
                 return;
             }
             
-            if (imageIndex >= currentShapeLayers.length || imageIndex >= shapeStyles.length) {
-                console.log('图片索引超出范围:', imageIndex);
+            if (imageIndex >= currentShapeLayers.length) {
+                console.log('图片索引超出范围:', imageIndex, '>=', currentShapeLayers.length);
                 return;
             }
             
-            const referenceLayer = currentShapeLayers[imageIndex];
-            const style = shapeStyles[imageIndex];
+            // 获取参考的形状图层（保持不变）
+            const shapeLayer = currentShapeLayers[imageIndex];
             
-            // 获取当前页面（始终添加到当前页面，不修改原始图层）
+            // 获取形状图层的尺寸和位置信息
+            const shapeWidth = shapeLayer.width || 120;
+            const shapeHeight = shapeLayer.height || 120;
+            const shapeX = shapeLayer.x || 0;
+            const shapeY = shapeLayer.y || 0;
+            const shapeType = shapeLayer.type;
+            const shapeCornerRadius = shapeLayer.cornerRadius || 0;
+            
+            // 获取父容器
             const currentPage = mg.document.currentPage;
+            const parent = shapeLayer.parent || currentPage;
             
-            // 计算参考图层的绝对位置（考虑父容器的位置）
-            let absoluteX = referenceLayer.x || style.x || 0;
-            let absoluteY = referenceLayer.y || style.y || 0;
-            
-            // 如果参考图层有父容器，需要累加父容器的位置
-            let parentNode = referenceLayer.parent;
-            while (parentNode && parentNode !== currentPage) {
-                if (parentNode.x !== undefined) {
-                    absoluteX += parentNode.x;
-                }
-                if (parentNode.y !== undefined) {
-                    absoluteY += parentNode.y;
-                }
-                parentNode = parentNode.parent;
-            }
-            
-            console.log(`参考图层位置: (${referenceLayer.x}, ${referenceLayer.y}), 绝对位置: (${absoluteX}, ${absoluteY})`);
+            console.log(`处理图片 ${imageIndex + 1}/${currentShapeLayers.length}，形状尺寸: ${shapeWidth}×${shapeHeight}`);
             
             // 将普通数组转换为 Uint8Array
             const imageData = new Uint8Array(imageDataArray);
             
             // 创建图片对象
-            console.log(`创建图片 ${imageIndex}，数据长度: ${imageData.length}`);
+            console.log(`创建图片对象，数据长度: ${imageData.length}`);
             const imageHandle = await mg.createImage(imageData);
             
-            // 获取参考图层的尺寸
-            const imageWidth = referenceLayer.width || style.width || 120;
-            const imageHeight = referenceLayer.height || style.height || 120;
-            
-            console.log(`创建图片图层，尺寸: ${imageWidth}×${imageHeight}，绝对位置: (${absoluteX}, ${absoluteY})`);
-            
-            // 1. 创建组（Frame）- 使用绝对位置
-            console.log(`创建蒙版组`);
-            const group = mg.createFrame();
-            group.x = absoluteX;
-            group.y = absoluteY;
-            group.width = imageWidth;
-            group.height = imageHeight;
-            
-            // 2. 创建图片图层（使用矩形填充图片的方式）
+            // 1. 创建图片图层（在形状图层上方）
+            // 图片尺寸：保持原始比例，缩放至短边刚好覆盖整个形状区域（object-fit: cover）
+            // 计算图片缩放比例：取宽高的较大缩放比例，确保短边覆盖
+            // 注意：由于我们不知道原始图片尺寸，先创建与形状相同尺寸的图片图层
+            // MasterGo 会自动处理图片的缩放和裁剪
             const imageNode = mg.createRectangle();
-            // 图片在组内的相对位置（0, 0）
-            imageNode.x = 0;
-            imageNode.y = 0;
-            imageNode.width = imageWidth;
-            imageNode.height = imageHeight;
+            imageNode.x = shapeX;
+            imageNode.y = shapeY;
+            imageNode.width = shapeWidth;
+            imageNode.height = shapeHeight;
             
-            // 设置图片填充
+            // 设置图片填充（使用 FILL 模式实现 object-fit: cover 效果）
             imageNode.fills = [{
                 type: 'IMAGE',
-                scaleMode: fillMode,
+                scaleMode: 'FILL', // FILL 模式：保持比例，缩放至最小一边覆盖
                 imageRef: imageHandle.href
             }];
             
-            console.log(`图片图层创建成功`);
+            console.log(`图片图层创建成功，位置: (${shapeX}, ${shapeY})`);
             
-            // 3. 创建形状蒙版图层（根据参考图层的类型）
-            console.log(`创建形状蒙版图层，类型: ${style.type}`);
-            let maskNode;
-            
-            if (style.type === 'ELLIPSE' || style.type === 'ellipse') {
-                // 创建圆形
-                maskNode = mg.createEllipse();
+            // 2. 将图片图层添加到父容器（在形状图层上方）
+            // 获取形状图层在父容器中的索引
+            const shapeIndex = parent.children.indexOf(shapeLayer);
+            if (shapeIndex >= 0) {
+                // 在形状图层之后插入图片图层（图片在上方）
+                parent.insertChild(shapeIndex + 1, imageNode);
             } else {
-                // 创建矩形（含圆角）
-                maskNode = mg.createRectangle();
-                if (style.cornerRadius && style.cornerRadius > 0) {
-                    maskNode.cornerRadius = style.cornerRadius;
-                }
+                // 如果找不到索引，直接添加到末尾
+                parent.appendChild(imageNode);
             }
             
-            // 设置形状图层在组内的相对位置和尺寸（与图片图层相同）
-            maskNode.x = 0;
-            maskNode.y = 0;
-            maskNode.width = imageWidth;
-            maskNode.height = imageHeight;
+            console.log(`图片图层已添加到形状图层上方`);
             
-            // 设置形状图层为蒙版（根据 MasterGo API，可能需要设置 group.mask）
-            // 先添加到组中，再设置蒙版关系
+            // 3. 创建蒙版组（Frame）
+            // 将图片和形状组合成蒙版组
+            const maskGroup = mg.createFrame();
+            maskGroup.x = shapeX;
+            maskGroup.y = shapeY;
+            maskGroup.width = shapeWidth;
+            maskGroup.height = shapeHeight;
             
-            // 4. 将图层添加到组中：先添加图片（在下），再添加形状（在上，作为蒙版）
-            // 注意：在 MasterGo 中，蒙版图层应该在最后添加
-            group.appendChild(imageNode);
-            group.appendChild(maskNode);
+            // 4. 将图片和形状添加到组中
+            // 顺序：图片在下，形状在上（形状作为蒙版）
+            maskGroup.appendChild(imageNode);
+            maskGroup.appendChild(shapeLayer);
             
-            // 5. 设置蒙版关系（形状图层作为蒙版）
-            // 根据 MasterGo API，设置蒙版的方式：
-            // 方式1：设置 group.mask 属性指向蒙版图层
-            // 方式2：设置 maskNode.isMask = true（如果支持）
-            // 方式3：使用 maskNode.setAsMask() 方法（如果存在）
+            // 5. 设置形状图层为蒙版
+            // 根据 MasterGo API，设置蒙版的方式
             try {
-                if (group.mask !== undefined) {
-                    group.mask = maskNode;
+                if (maskGroup.mask !== undefined) {
+                    maskGroup.mask = shapeLayer;
                 }
-                if (maskNode.isMask !== undefined) {
-                    maskNode.isMask = true;
+                if (shapeLayer.isMask !== undefined) {
+                    shapeLayer.isMask = true;
                 }
-                if (maskNode.setAsMask && typeof maskNode.setAsMask === 'function') {
-                    maskNode.setAsMask();
+                if (shapeLayer.setAsMask && typeof shapeLayer.setAsMask === 'function') {
+                    shapeLayer.setAsMask();
                 }
-                group.clipsContent = true;
+                maskGroup.clipsContent = true;
             } catch (e) {
                 console.warn('设置蒙版时出错，尝试其他方式:', e);
-                // 如果上述方式都不行，尝试直接设置属性
                 try {
-                    group.mask = maskNode;
+                    maskGroup.mask = shapeLayer;
                 } catch (e2) {
                     console.error('无法设置蒙版:', e2);
                 }
             }
             
-            console.log(`形状蒙版图层创建成功`);
-            
-            // 6. 将组添加到当前页面（不修改原始图层）
-            // 确保新组添加到页面层级，而不是参考图层的父容器
-            currentPage.appendChild(group);
-            
-            console.log(`蒙版组已添加到当前页面，位置: (${absoluteX}, ${absoluteY})`);
+            // 6. 将蒙版组添加到父容器（替换原来的图片和形状）
+            // 先移除图片和形状（它们已经在组中了）
+            if (parent.children.indexOf(imageNode) >= 0) {
+                parent.removeChild(imageNode);
+            }
+            if (parent.children.indexOf(shapeLayer) >= 0) {
+                parent.removeChild(shapeLayer);
+            }
+            // 添加蒙版组
+            parent.appendChild(maskGroup);
             
             console.log(`蒙版组创建成功，图片 ${imageIndex + 1}/${currentShapeLayers.length} 处理完成`);
             
@@ -371,15 +326,14 @@ mg.ui.onmessage = async (msg) => {
             
             if (isLastImage) {
                 // 发送成功消息
-                console.log('所有图层填充完成，发送成功消息');
+                console.log('所有图层处理完成，发送成功消息');
                 mg.ui.postMessage({ type: 'success', message: `成功创建${currentShapeLayers.length}个图片蒙版组` });
                 if (mg.notify) {
                     mg.notify(`成功创建${currentShapeLayers.length}个图片蒙版组`);
                 }
                 console.log('成功消息已发送');
-                // 清空图层引用和样式
+                // 清空图层引用
                 currentShapeLayers = [];
-                shapeStyles = [];
             }
             
         } catch (error) {
@@ -394,7 +348,6 @@ mg.ui.onmessage = async (msg) => {
                     mg.notify(`创建失败: ${error.message}`);
                 }
                 currentShapeLayers = [];
-                shapeStyles = [];
             } else {
                 // 不是最后一张，继续处理下一张，但记录错误
                 console.warn(`图片 ${imageIndex} 处理失败，但继续处理其他图片`);
