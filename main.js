@@ -3,6 +3,9 @@ console.log('插件初始化开始...');
 mg.showUI(__html__)
 console.log('插件UI已显示');
 
+// 保存当前处理的图层引用，避免异步处理时选中状态丢失
+let currentShapeLayers = [];
+
 // 获取选中的形状图层（排除文本图层）
 function getSelectedShapeLayers() {
     try {
@@ -168,12 +171,12 @@ mg.ui.onmessage = async (msg) => {
         console.log('API返回图片数组:', actualMsg.images);
         console.log('图片数量:', actualMsg.images.length);
         
-        // 获取选中的形状图层
+        // 获取选中的形状图层并保存引用
         console.log('开始获取选中的形状图层...');
-        const shapeLayers = getSelectedShapeLayers();
-        console.log('获取到的形状图层数量:', shapeLayers.length);
+        currentShapeLayers = getSelectedShapeLayers();
+        console.log('获取到的形状图层数量:', currentShapeLayers.length);
         
-        if (shapeLayers.length === 0) {
+        if (currentShapeLayers.length === 0) {
             console.error('未找到选中的形状图层');
             const errorMsg = '未找到选中的形状图层';
             mg.ui.postMessage({ type: 'error', message: errorMsg });
@@ -190,7 +193,8 @@ mg.ui.onmessage = async (msg) => {
         mg.ui.postMessage({
             type: 'download-images',
             images: actualMsg.images,
-            fillMode: fillMode
+            fillMode: fillMode,
+            layerCount: currentShapeLayers.length
         });
     }
     
@@ -199,17 +203,23 @@ mg.ui.onmessage = async (msg) => {
         console.log('收到图片数据:', actualMsg);
         
         try {
-            const shapeLayers = getSelectedShapeLayers();
+            // 使用保存的图层引用，而不是重新获取
             const imageDataArray = actualMsg.imageData; // 普通数组
             const fillMode = actualMsg.fillMode || 'FILL';
             const imageIndex = actualMsg.index || 0;
             
-            if (imageIndex >= shapeLayers.length) {
-                console.log('图片索引超出范围');
+            if (!currentShapeLayers || currentShapeLayers.length === 0) {
+                console.error('图层引用已丢失');
+                mg.ui.postMessage({ type: 'error', message: '图层引用已丢失，请重新选择图层并重试' });
                 return;
             }
             
-            const layer = shapeLayers[imageIndex];
+            if (imageIndex >= currentShapeLayers.length) {
+                console.log('图片索引超出范围:', imageIndex, '>=', currentShapeLayers.length);
+                return;
+            }
+            
+            const layer = currentShapeLayers[imageIndex];
             
             // 将普通数组转换为 Uint8Array
             const imageData = new Uint8Array(imageDataArray);
@@ -245,14 +255,16 @@ mg.ui.onmessage = async (msg) => {
             console.log(`图层 ${imageIndex} 填充成功`);
             
             // 检查是否所有图片都已处理
-            if (imageIndex === shapeLayers.length - 1) {
+            if (imageIndex === currentShapeLayers.length - 1) {
                 // 发送成功消息
                 console.log('所有图层填充完成，发送成功消息');
-                mg.ui.postMessage({ type: 'success', message: `成功填充${shapeLayers.length}个形状图层` });
+                mg.ui.postMessage({ type: 'success', message: `成功填充${currentShapeLayers.length}个形状图层` });
                 if (mg.notify) {
-                    mg.notify(`成功填充${shapeLayers.length}个形状图层`);
+                    mg.notify(`成功填充${currentShapeLayers.length}个形状图层`);
                 }
                 console.log('成功消息已发送');
+                // 清空图层引用
+                currentShapeLayers = [];
             }
             
         } catch (error) {
