@@ -201,8 +201,10 @@ mg.ui.onmessage = async (msg) => {
         try {
             // 使用已锁定的图层引用（不重新获取，确保使用初始选择）
             const imageDataArray = actualMsg.imageData; // 普通数组
-            const fillMode = actualMsg.fillMode || 'FILL';
             const imageIndex = actualMsg.index || 0;
+            // 从UI传递的图片尺寸信息
+            const imageWidthFromUI = actualMsg.imageWidth || 0;
+            const imageHeightFromUI = actualMsg.imageHeight || 0;
             
             if (!currentShapeLayers || currentShapeLayers.length === 0) {
                 console.error('图层引用已丢失');
@@ -269,22 +271,27 @@ mg.ui.onmessage = async (msg) => {
             console.log(`创建图片对象，数据长度: ${imageData.length}`);
             const imageHandle = await mg.createImage(imageData);
             
-            // 获取图片的原始尺寸（如果可用）
-            // 注意：MasterGo API 可能不直接提供图片尺寸，需要尝试获取
-            let imageWidth = 0;
-            let imageHeight = 0;
-            try {
-                // 尝试从 imageHandle 获取图片尺寸
-                if (imageHandle.width !== undefined && imageHandle.height !== undefined) {
-                    imageWidth = imageHandle.width;
-                    imageHeight = imageHandle.height;
-                } else if (imageHandle.size !== undefined) {
-                    imageWidth = imageHandle.size.width || 0;
-                    imageHeight = imageHandle.size.height || 0;
+            // 获取图片的原始尺寸
+            // 优先使用从UI传递的尺寸信息（从JPEG文件头解析）
+            let imageWidth = imageWidthFromUI;
+            let imageHeight = imageHeightFromUI;
+            
+            // 如果UI没有提供尺寸，尝试从 imageHandle 获取
+            if (imageWidth === 0 || imageHeight === 0) {
+                try {
+                    if (imageHandle.width !== undefined && imageHandle.height !== undefined) {
+                        imageWidth = imageHandle.width;
+                        imageHeight = imageHandle.height;
+                    } else if (imageHandle.size !== undefined) {
+                        imageWidth = imageHandle.size.width || 0;
+                        imageHeight = imageHandle.size.height || 0;
+                    }
+                } catch (e) {
+                    console.warn('无法从imageHandle获取图片尺寸:', e);
                 }
-            } catch (e) {
-                console.warn('无法获取图片原始尺寸:', e);
             }
+            
+            console.log(`图片尺寸来源: UI传递=${imageWidthFromUI}×${imageHeightFromUI}, 最终使用=${imageWidth}×${imageHeight}`);
             
             // 1. 先计算缩放比例（保持原始比例，不裁剪）
             // 如果无法获取图片尺寸，使用形状尺寸（后续由 MasterGo 自动处理）
@@ -319,10 +326,11 @@ mg.ui.onmessage = async (msg) => {
             
             // 2. 创建图片图层（添加到形状图层的父容器，使用计算后的位置和尺寸）
             const imageNode = mg.createRectangle();
-            imageNode.x = imageX;
-            imageNode.y = imageY;
-            imageNode.width = scaledWidth;
-            imageNode.height = scaledHeight;
+            // 确保位置和尺寸都是数字类型，避免精度问题
+            imageNode.x = Math.round(imageX * 100) / 100; // 保留2位小数
+            imageNode.y = Math.round(imageY * 100) / 100;
+            imageNode.width = Math.round(scaledWidth * 100) / 100;
+            imageNode.height = Math.round(scaledHeight * 100) / 100;
             
             // 设置图片填充（使用 FILL 模式：保持比例，缩放至最小一边覆盖，超出部分会被蒙版裁剪）
             imageNode.fills = [{
@@ -331,9 +339,10 @@ mg.ui.onmessage = async (msg) => {
                 imageRef: imageHandle.href
             }];
             
-            console.log(`图片图层创建成功，位置: (${imageX.toFixed(2)}, ${imageY.toFixed(2)})，尺寸: ${scaledWidth.toFixed(2)}×${scaledHeight.toFixed(2)}`);
+            console.log(`图片图层创建成功，位置: (${imageNode.x}, ${imageNode.y})，尺寸: ${imageNode.width}×${imageNode.height}`);
+            console.log(`形状图层位置: (${shapeX}, ${shapeY})，尺寸: ${shapeWidth}×${shapeHeight}`);
             
-            // 2. 将图片图层添加到形状图层的父容器（确保在同一容器内，才能设置蒙版）
+            // 3. 将图片图层添加到形状图层的父容器（确保在同一容器内，才能设置蒙版）
             // 获取形状图层在父容器中的索引
             const shapeIndex = targetParent.children.indexOf(shapeLayer);
             if (shapeIndex >= 0) {
@@ -350,6 +359,9 @@ mg.ui.onmessage = async (msg) => {
             const imageIndexInParent = targetParent.children.indexOf(imageNode);
             const shapeIndexInParent = targetParent.children.indexOf(shapeLayer);
             console.log(`验证: 图片图层在父容器索引: ${imageIndexInParent}，形状图层在父容器索引: ${shapeIndexInParent}`);
+            
+            // 验证图片图层的位置（读取实际设置的位置）
+            console.log(`图片图层实际位置: (${imageNode.x}, ${imageNode.y})，尺寸: ${imageNode.width}×${imageNode.height}`);
             
             if (imageIndexInParent < 0) {
                 console.error('图片图层未能成功添加到父容器');

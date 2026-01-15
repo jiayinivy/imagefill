@@ -397,11 +397,45 @@
                 
                 console.log(`UI: 图片 ${i} 下载完成，大小: ${uint8Array.length} bytes`);
                 
-                // 发送图片数据给主线程
+                // 尝试从图片数据中解析尺寸（JPEG文件头包含尺寸信息）
+                let imageWidth = 0;
+                let imageHeight = 0;
+                try {
+                    // 解析JPEG文件头获取尺寸
+                    const view = new DataView(arrayBuffer);
+                    if (view.getUint8(0) === 0xFF && view.getUint8(1) === 0xD8) {
+                        // JPEG文件，查找SOF标记（Start of Frame）
+                        let offset = 2;
+                        while (offset < arrayBuffer.byteLength - 1) {
+                            if (view.getUint8(offset) === 0xFF) {
+                                const marker = view.getUint8(offset + 1);
+                                // SOF0-SOF15 (0xC0-0xCF) 包含图片尺寸
+                                if (marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4 && marker !== 0xC8) {
+                                    // 跳过标记和长度字段
+                                    const height = view.getUint16(offset + 5, false);
+                                    const width = view.getUint16(offset + 7, false);
+                                    if (width > 0 && height > 0) {
+                                        imageWidth = width;
+                                        imageHeight = height;
+                                        console.log(`UI: 从JPEG文件头解析到图片尺寸: ${imageWidth}×${imageHeight}`);
+                                        break;
+                                    }
+                                }
+                            }
+                            offset++;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('UI: 解析图片尺寸失败:', e);
+                }
+                
+                // 发送图片数据和尺寸信息给主线程
                 parent.postMessage({ 
                     pluginMessage: { 
                         type: 'image-data', 
                         imageData: Array.from(uint8Array), // 转换为普通数组以便序列化
+                        imageWidth: imageWidth,
+                        imageHeight: imageHeight,
                         index: i
                     } 
                 }, '*');
