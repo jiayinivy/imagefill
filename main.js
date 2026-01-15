@@ -229,28 +229,43 @@ mg.ui.onmessage = async (msg) => {
             const shapeX = shapeLayer.x || 0;
             const shapeY = shapeLayer.y || 0;
             
-            // 获取形状图层的父容器（确保图片和形状在同一容器）
-            const parent = shapeLayer.parent;
-            if (!parent) {
+            // 获取当前页面（确保图片添加到画布上）
+            const currentPage = mg.document.currentPage;
+            
+            // 获取形状图层的父容器
+            const shapeParent = shapeLayer.parent;
+            if (!shapeParent) {
                 console.error('无法获取形状图层的父容器');
                 mg.ui.postMessage({ type: 'error', message: '无法获取形状图层的父容器' });
                 return;
             }
             
-            console.log(`处理图片 ${imageIndex + 1}/${currentShapeLayers.length}`);
-            console.log(`形状图层信息: 尺寸 ${shapeWidth}×${shapeHeight}，位置 (${shapeX}, ${shapeY})`);
-            console.log(`形状图层父容器类型: ${parent.type || 'unknown'}`);
-            console.log(`形状图层父容器位置: (${parent.x || 0}, ${parent.y || 0})`);
-            console.log(`形状图层父容器尺寸: ${parent.width || 0}×${parent.height || 0}`);
-            
-            // 检查父容器是否在画布上（检查父容器的父容器）
-            const grandParent = parent.parent;
-            if (grandParent) {
-                console.log(`形状图层父容器的父容器类型: ${grandParent.type || 'unknown'}`);
-                console.log(`形状图层父容器的父容器位置: (${grandParent.x || 0}, ${grandParent.y || 0})`);
-            } else {
-                console.log(`形状图层父容器没有父容器（可能是顶层容器）`);
+            // 计算形状图层的绝对位置（相对于页面）
+            // 如果形状在组（FRAME）内，需要累加父容器的位置
+            let absoluteX = shapeX;
+            let absoluteY = shapeY;
+            let node = shapeParent;
+            while (node && node !== currentPage) {
+                if (node.x !== undefined) {
+                    absoluteX += node.x;
+                }
+                if (node.y !== undefined) {
+                    absoluteY += node.y;
+                }
+                node = node.parent;
             }
+            
+            console.log(`处理图片 ${imageIndex + 1}/${currentShapeLayers.length}`);
+            console.log(`形状图层信息: 尺寸 ${shapeWidth}×${shapeHeight}`);
+            console.log(`形状图层在父容器中的位置: (${shapeX}, ${shapeY})`);
+            console.log(`形状图层绝对位置（相对于页面）: (${absoluteX}, ${absoluteY})`);
+            console.log(`形状图层父容器类型: ${shapeParent.type || 'unknown'}`);
+            console.log(`形状图层父容器位置: (${shapeParent.x || 0}, ${shapeParent.y || 0})`);
+            
+            // 决定将图片添加到哪个容器
+            // 如果形状的父容器是 PAGE，直接添加到 PAGE
+            // 如果形状的父容器是 FRAME 或其他组，也添加到该组（与形状在同一容器）
+            const targetParent = shapeParent;
             
             // 将普通数组转换为 Uint8Array
             const imageData = new Uint8Array(imageDataArray);
@@ -263,7 +278,7 @@ mg.ui.onmessage = async (msg) => {
             // 图片尺寸：保持原始比例，缩放至短边刚好覆盖整个形状区域（object-fit: cover）
             // MasterGo 的 FILL 模式会自动实现此效果，并居中对齐
             const imageNode = mg.createRectangle();
-            // 图片位置与形状图层位置相同，实现居中对齐
+            // 图片位置与形状图层在父容器中的相对位置相同，实现居中对齐
             imageNode.x = shapeX;
             imageNode.y = shapeY;
             imageNode.width = shapeWidth;
@@ -276,24 +291,24 @@ mg.ui.onmessage = async (msg) => {
                 imageRef: imageHandle.href
             }];
             
-            console.log(`图片图层创建成功，位置: (${shapeX}, ${shapeY})，尺寸: ${shapeWidth}×${shapeHeight}`);
+            console.log(`图片图层创建成功，在父容器中的位置: (${shapeX}, ${shapeY})，尺寸: ${shapeWidth}×${shapeHeight}`);
             
             // 2. 将图片图层添加到形状图层的父容器（确保在同一容器）
             // 获取形状图层在父容器中的索引
-            const shapeIndex = parent.children.indexOf(shapeLayer);
+            const shapeIndex = targetParent.children.indexOf(shapeLayer);
             if (shapeIndex >= 0) {
                 // 在形状图层之后插入图片图层（图片在上方）
-                parent.insertChild(shapeIndex + 1, imageNode);
+                targetParent.insertChild(shapeIndex + 1, imageNode);
                 console.log(`图片图层已插入到父容器，索引: ${shapeIndex + 1}，形状图层索引: ${shapeIndex}`);
             } else {
                 // 如果找不到索引，直接添加到父容器末尾
-                parent.appendChild(imageNode);
+                targetParent.appendChild(imageNode);
                 console.log(`图片图层已添加到父容器末尾`);
             }
             
             // 验证图片图层是否成功添加到父容器
-            const imageIndexInParent = parent.children.indexOf(imageNode);
-            const shapeIndexInParent = parent.children.indexOf(shapeLayer);
+            const imageIndexInParent = targetParent.children.indexOf(imageNode);
+            const shapeIndexInParent = targetParent.children.indexOf(shapeLayer);
             console.log(`验证: 图片图层在父容器索引: ${imageIndexInParent}，形状图层在父容器索引: ${shapeIndexInParent}`);
             
             if (imageIndexInParent < 0) {
@@ -302,7 +317,7 @@ mg.ui.onmessage = async (msg) => {
                 return;
             }
             
-            console.log(`图片图层已成功添加到形状图层的父容器`);
+            console.log(`图片图层已成功添加到形状图层的父容器（${targetParent.type || 'unknown'}）`);
             
             // 3. 设置形状图层为蒙版（作用于图片图层）
             // 根据 MasterGo API，设置蒙版的方式
