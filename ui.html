@@ -172,6 +172,24 @@
     <button class="preset-button" id="productBtn">product</button>
 </div>
 
+<div class="fill-mode-section">
+    <label class="config-label">填充模式</label>
+    <div class="fill-mode-options">
+        <div class="fill-mode-option">
+            <input type="radio" id="fillModeFill" name="fillMode" value="FILL" checked>
+            <label for="fillModeFill">居中裁剪（保持比例，缩放至最小一边覆盖）</label>
+        </div>
+        <div class="fill-mode-option">
+            <input type="radio" id="fillModeStretch" name="fillMode" value="STRETCH">
+            <label for="fillModeStretch">拉伸（强制填满，可能变形）</label>
+        </div>
+        <div class="fill-mode-option">
+            <input type="radio" id="fillModeTile" name="fillMode" value="TILE">
+            <label for="fillModeTile">平铺（按原尺寸重复）</label>
+        </div>
+    </div>
+</div>
+
 <div class="message" id="message"></div>
 <button class="submit-button" id="submitBtn">搜索并填充</button>
 
@@ -181,6 +199,7 @@
     const productBtn = document.getElementById('productBtn');
     const submitBtn = document.getElementById('submitBtn');
     const message = document.getElementById('message');
+    const fillModeRadios = document.querySelectorAll('input[name="fillMode"]');
 
     // 显示消息
     function showMessage(text, type) {
@@ -191,6 +210,12 @@
     // 隐藏消息
     function hideMessage() {
         message.className = 'message';
+    }
+
+    // 获取选中的填充模式
+    function getFillMode() {
+        const selected = document.querySelector('input[name="fillMode"]:checked');
+        return selected ? selected.value : 'FILL';
     }
 
     // 预设按钮点击事件
@@ -218,7 +243,8 @@
         parent.postMessage({ 
             pluginMessage: { 
                 type: 'submit', 
-                keyword: keyword
+                keyword: keyword,
+                fillMode: getFillMode()
             } 
         }, '*');
     });
@@ -251,7 +277,8 @@
                     parent.postMessage({ 
                         pluginMessage: { 
                             type: 'api-response', 
-                            images: images
+                            images: images,
+                            fillMode: msg.fillMode
                         } 
                     }, '*');
                 })
@@ -273,7 +300,7 @@
             console.log('UI: 收到下载图片请求:', msg);
             showMessage('正在下载图片...', 'loading');
             
-            downloadImages(msg.images)
+            downloadImages(msg.images, msg.fillMode)
                 .catch(error => {
                     console.error('UI: 下载图片失败:', error);
                     parent.postMessage({ 
@@ -375,7 +402,7 @@
     }
 
     // 下载图片数据并发送给主线程
-    async function downloadImages(images) {
+    async function downloadImages(images, fillMode) {
         let successCount = 0;
         let failCount = 0;
         
@@ -398,13 +425,14 @@
                 console.log(`UI: 图片 ${i} 下载完成，大小: ${uint8Array.length} bytes`);
                 
                 // 发送图片数据给主线程
-            parent.postMessage({ 
-                pluginMessage: { 
-                    type: 'image-data', 
-                    imageData: Array.from(uint8Array), // 转换为普通数组以便序列化
-                    index: i
-                } 
-            }, '*');
+                parent.postMessage({ 
+                    pluginMessage: { 
+                        type: 'image-data', 
+                        imageData: Array.from(uint8Array), // 转换为普通数组以便序列化
+                        fillMode: fillMode,
+                        index: i
+                    } 
+                }, '*');
                 
                 successCount++;
             } catch (error) {
