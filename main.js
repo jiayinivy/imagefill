@@ -467,11 +467,8 @@ mg.ui.onmessage = async (msg) => {
             group.width = shapeWidth;
             group.height = shapeHeight;
             
-            // 获取图片和形状在父容器中的索引
-            const imageIndexInParent = targetParent.children.indexOf(imageNode);
-            const shapeIndexInParent = targetParent.children.indexOf(shapeLayer);
-            
             // 获取形状图层在父容器中的原始索引（用于后续插入组）
+            // 注意：imageIndexInParent 和 shapeIndexInParent 已经在前面声明过了
             const originalShapeIndex = shapeIndexInParent >= 0 ? shapeIndexInParent : imageIndexInParent;
             
             // 将图片和形状添加到组中（顺序：形状在下，图片在上）
