@@ -109,7 +109,7 @@ mg.ui.onmessage = async (msg) => {
         mg.ui.postMessage({ type: 'loading', message: '正在处理...' });
         
         try {
-            // 1. 获取选中的形状图层
+            // 1. 立即锁定并保存选中的形状图层（锁定初始选择）
             const shapeLayers = getSelectedShapeLayers();
             
             if (shapeLayers.length === 0) {
@@ -119,6 +119,11 @@ mg.ui.onmessage = async (msg) => {
                 }
                 return;
             }
+            
+            // 立即保存图层引用，锁定初始选择
+            // 即使后续用户切换选中，也不影响当前操作流程
+            currentShapeLayers = shapeLayers.slice(); // 复制数组，避免引用被修改
+            console.log(`已锁定 ${currentShapeLayers.length} 个形状图层，后续切换选中不影响操作`);
             
             const count = shapeLayers.length;
             
@@ -171,14 +176,10 @@ mg.ui.onmessage = async (msg) => {
         console.log('API返回图片数组:', actualMsg.images);
         console.log('图片数量:', actualMsg.images.length);
         
-        // 获取选中的形状图层并保存引用
-        console.log('开始获取选中的形状图层...');
-        currentShapeLayers = getSelectedShapeLayers();
-        console.log('获取到的形状图层数量:', currentShapeLayers.length);
-        
-        if (currentShapeLayers.length === 0) {
-            console.error('未找到选中的形状图层');
-            const errorMsg = '未找到选中的形状图层';
+        // 验证已锁定的图层引用（不重新获取，使用初始锁定）
+        if (!currentShapeLayers || currentShapeLayers.length === 0) {
+            console.error('图层引用已丢失');
+            const errorMsg = '图层引用已丢失，请重新选择图层并重试';
             mg.ui.postMessage({ type: 'error', message: errorMsg });
             if (mg.notify) {
                 mg.notify(errorMsg);
@@ -189,7 +190,7 @@ mg.ui.onmessage = async (msg) => {
         const fillMode = actualMsg.fillMode || 'FILL';
         
         // 请求 UI 下载图片数据
-        console.log('请求UI下载图片数据...');
+        console.log('请求UI下载图片数据，使用已锁定的图层引用...');
         mg.ui.postMessage({
             type: 'download-images',
             images: actualMsg.images,
@@ -203,7 +204,7 @@ mg.ui.onmessage = async (msg) => {
         console.log('收到图片数据:', actualMsg);
         
         try {
-            // 使用保存的图层引用，而不是重新获取
+            // 使用已锁定的图层引用（不重新获取，确保使用初始选择）
             const imageDataArray = actualMsg.imageData; // 普通数组
             const fillMode = actualMsg.fillMode || 'FILL';
             const imageIndex = actualMsg.index || 0;
@@ -219,35 +220,121 @@ mg.ui.onmessage = async (msg) => {
                 return;
             }
             
-            const layer = currentShapeLayers[imageIndex];
+            // 获取参考的形状图层（保持不变）
+            const shapeLayer = currentShapeLayers[imageIndex];
+            
+            // 获取形状图层的尺寸和位置信息
+            const shapeWidth = shapeLayer.width || 120;
+            const shapeHeight = shapeLayer.height || 120;
+            const shapeX = shapeLayer.x || 0;
+            const shapeY = shapeLayer.y || 0;
+            
+            // 获取父容器
+            const currentPage = mg.document.currentPage;
+            const parent = shapeLayer.parent || currentPage;
+            
+            console.log(`处理图片 ${imageIndex + 1}/${currentShapeLayers.length}，形状尺寸: ${shapeWidth}×${shapeHeight}，位置: (${shapeX}, ${shapeY})`);
             
             // 将普通数组转换为 Uint8Array
             const imageData = new Uint8Array(imageDataArray);
             
             // 创建图片对象
-            console.log(`创建图片 ${imageIndex}，数据长度: ${imageData.length}`);
+            console.log(`创建图片对象，数据长度: ${imageData.length}`);
             const imageHandle = await mg.createImage(imageData);
             
-            // 设置图片填充（Image as Mask）
-            console.log(`设置图层 ${imageIndex} 的图片填充，模式: ${fillMode}`);
+            // 1. 创建图片图层（在形状图层上方）
+            // 图片尺寸：保持原始比例，缩放至短边刚好覆盖整个形状区域（object-fit: cover）
+            // MasterGo 的 FILL 模式会自动实现此效果，并居中对齐
+            const imageNode = mg.createRectangle();
+            imageNode.x = shapeX;
+            imageNode.y = shapeY;
+            imageNode.width = shapeWidth;
+            imageNode.height = shapeHeight;
             
-            // 创建图片填充对象，清空所有原有填充，只保留图片填充
-            // 根据 MasterGo API，图片填充对象需要包含以下属性
-            const imageFill = {
+            // 设置图片填充（使用 FILL 模式实现 object-fit: cover 效果）
+            imageNode.fills = [{
                 type: 'IMAGE',
-                scaleMode: fillMode, // FILL, STRETCH, TILE
+                scaleMode: 'FILL', // FILL 模式：保持比例，缩放至最小一边覆盖，居中对齐
                 imageRef: imageHandle.href
-            };
+            }];
             
-            // 完全替换 fills 数组，只保留图片填充，移除所有颜色填充
-            // 使用新的数组完全替换，避免格式问题
-            const newFills = [];
-            newFills.push(imageFill);
-            layer.fills = newFills;
+            console.log(`图片图层创建成功，位置: (${shapeX}, ${shapeY})`);
             
-            console.log(`图层 ${imageIndex} fills 已设置，数量: ${layer.fills.length}`);
+            // 2. 将图片图层添加到父容器（在形状图层上方）
+            // 获取形状图层在父容器中的索引
+            const shapeIndex = parent.children.indexOf(shapeLayer);
+            if (shapeIndex >= 0) {
+                // 在形状图层之后插入图片图层（图片在上方）
+                parent.insertChild(shapeIndex + 1, imageNode);
+            } else {
+                // 如果找不到索引，直接添加到末尾
+                parent.appendChild(imageNode);
+            }
             
-            console.log(`图层 ${imageIndex} 填充成功`);
+            console.log(`图片图层已添加到形状图层上方`);
+            
+            // 3. 创建蒙版组（Frame）
+            // 将图片和形状组合成蒙版组
+            const maskGroup = mg.createFrame();
+            maskGroup.x = shapeX;
+            maskGroup.y = shapeY;
+            maskGroup.width = shapeWidth;
+            maskGroup.height = shapeHeight;
+            
+            console.log(`创建蒙版组，位置: (${shapeX}, ${shapeY})，尺寸: ${shapeWidth}×${shapeHeight}`);
+            
+            // 4. 将图片和形状添加到组中
+            // 顺序：先添加图片（在下），再添加形状（在上，作为蒙版）
+            // 注意：当图层添加到组中时，会自动从原父容器移除
+            maskGroup.appendChild(imageNode);
+            maskGroup.appendChild(shapeLayer);
+            
+            console.log(`图片和形状已添加到蒙版组`);
+            
+            // 5. 设置形状图层为蒙版
+            // 根据 MasterGo API，设置蒙版的方式
+            try {
+                if (maskGroup.mask !== undefined) {
+                    maskGroup.mask = shapeLayer;
+                }
+                if (shapeLayer.isMask !== undefined) {
+                    shapeLayer.isMask = true;
+                }
+                if (shapeLayer.setAsMask && typeof shapeLayer.setAsMask === 'function') {
+                    shapeLayer.setAsMask();
+                }
+                maskGroup.clipsContent = true;
+            } catch (e) {
+                console.warn('设置蒙版时出错，尝试其他方式:', e);
+                try {
+                    maskGroup.mask = shapeLayer;
+                } catch (e2) {
+                    console.error('无法设置蒙版:', e2);
+                }
+            }
+            
+            // 6. 将蒙版组添加到父容器
+            // 形状图层已经自动从父容器移除（因为添加到了组中）
+            // 图片图层也已经自动从父容器移除（因为添加到了组中）
+            // 获取形状图层原来的位置索引，在相同位置插入蒙版组
+            const originalShapeIndex = parent.children.indexOf(shapeLayer);
+            if (originalShapeIndex >= 0) {
+                // 如果形状还在父容器中（不应该发生），先移除
+                parent.removeChild(shapeLayer);
+                parent.insertChild(originalShapeIndex, maskGroup);
+            } else {
+                // 形状已经不在父容器中（已添加到组），检查图片图层
+                const imageIndexInParent = parent.children.indexOf(imageNode);
+                if (imageIndexInParent >= 0) {
+                    parent.removeChild(imageNode);
+                    parent.insertChild(imageIndexInParent, maskGroup);
+                } else {
+                    // 两者都已不在父容器中，直接添加组
+                    parent.appendChild(maskGroup);
+                }
+            }
+            
+            console.log(`蒙版组创建成功，图片 ${imageIndex + 1}/${currentShapeLayers.length} 处理完成`);
             
             // 检查是否所有图片都已处理
             // 注意：imageIndex 是从 0 开始的，所以最后一个索引是 length - 1
@@ -256,10 +343,10 @@ mg.ui.onmessage = async (msg) => {
             
             if (isLastImage) {
                 // 发送成功消息
-                console.log('所有图层填充完成，发送成功消息');
-                mg.ui.postMessage({ type: 'success', message: `成功填充${currentShapeLayers.length}个形状图层` });
+                console.log('所有图层处理完成，发送成功消息');
+                mg.ui.postMessage({ type: 'success', message: `成功创建${currentShapeLayers.length}个图片蒙版组` });
                 if (mg.notify) {
-                    mg.notify(`成功填充${currentShapeLayers.length}个形状图层`);
+                    mg.notify(`成功创建${currentShapeLayers.length}个图片蒙版组`);
                 }
                 console.log('成功消息已发送');
                 // 清空图层引用
@@ -273,9 +360,9 @@ mg.ui.onmessage = async (msg) => {
             // 即使出错，也检查是否所有图片都已处理
             const isLastImage = imageIndex === currentShapeLayers.length - 1;
             if (isLastImage) {
-                mg.ui.postMessage({ type: 'error', message: `填充失败: ${error.message}` });
+                mg.ui.postMessage({ type: 'error', message: `创建失败: ${error.message}` });
                 if (mg.notify) {
-                    mg.notify(`填充失败: ${error.message}`);
+                    mg.notify(`创建失败: ${error.message}`);
                 }
                 currentShapeLayers = [];
             } else {
