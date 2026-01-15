@@ -238,14 +238,23 @@ mg.ui.onmessage = async (msg) => {
             console.log(`创建图片对象，数据长度: ${imageData.length}`);
             const imageHandle = await mg.createImage(imageData);
             
-            // 1. 创建图片图层（在形状图层上方）
+            // 1. 创建蒙版组（Frame）
+            // 先创建组，然后将图片和形状添加到组中
+            const maskGroup = mg.createFrame();
+            maskGroup.x = shapeX;
+            maskGroup.y = shapeY;
+            maskGroup.width = shapeWidth;
+            maskGroup.height = shapeHeight;
+            
+            console.log(`创建蒙版组，位置: (${shapeX}, ${shapeY})，尺寸: ${shapeWidth}×${shapeHeight}`);
+            
+            // 2. 创建图片图层
             // 图片尺寸：保持原始比例，缩放至短边刚好覆盖整个形状区域（object-fit: cover）
-            // 计算图片缩放比例：取宽高的较大缩放比例，确保短边覆盖
-            // 注意：由于我们不知道原始图片尺寸，先创建与形状相同尺寸的图片图层
-            // MasterGo 会自动处理图片的缩放和裁剪
+            // MasterGo 的 FILL 模式会自动实现此效果
             const imageNode = mg.createRectangle();
-            imageNode.x = shapeX;
-            imageNode.y = shapeY;
+            // 图片在组内的相对位置（0, 0）
+            imageNode.x = 0;
+            imageNode.y = 0;
             imageNode.width = shapeWidth;
             imageNode.height = shapeHeight;
             
@@ -256,35 +265,17 @@ mg.ui.onmessage = async (msg) => {
                 imageRef: imageHandle.href
             }];
             
-            console.log(`图片图层创建成功，位置: (${shapeX}, ${shapeY})`);
+            console.log(`图片图层创建成功`);
             
-            // 2. 将图片图层添加到父容器（在形状图层上方）
-            // 获取形状图层在父容器中的索引
-            const shapeIndex = parent.children.indexOf(shapeLayer);
-            if (shapeIndex >= 0) {
-                // 在形状图层之后插入图片图层（图片在上方）
-                parent.insertChild(shapeIndex + 1, imageNode);
-            } else {
-                // 如果找不到索引，直接添加到末尾
-                parent.appendChild(imageNode);
-            }
-            
-            console.log(`图片图层已添加到形状图层上方`);
-            
-            // 3. 创建蒙版组（Frame）
-            // 将图片和形状组合成蒙版组
-            const maskGroup = mg.createFrame();
-            maskGroup.x = shapeX;
-            maskGroup.y = shapeY;
-            maskGroup.width = shapeWidth;
-            maskGroup.height = shapeHeight;
-            
-            // 4. 将图片和形状添加到组中
-            // 顺序：图片在下，形状在上（形状作为蒙版）
+            // 3. 将图片和形状添加到组中
+            // 顺序：先添加图片（在下），再添加形状（在上，作为蒙版）
+            // 注意：当图层添加到组中时，会自动从原父容器移除
             maskGroup.appendChild(imageNode);
             maskGroup.appendChild(shapeLayer);
             
-            // 5. 设置形状图层为蒙版
+            console.log(`图片和形状已添加到蒙版组`);
+            
+            // 4. 设置形状图层为蒙版
             // 根据 MasterGo API，设置蒙版的方式
             try {
                 if (maskGroup.mask !== undefined) {
@@ -306,16 +297,18 @@ mg.ui.onmessage = async (msg) => {
                 }
             }
             
-            // 6. 将蒙版组添加到父容器（替换原来的图片和形状）
-            // 先移除图片和形状（它们已经在组中了）
-            if (parent.children.indexOf(imageNode) >= 0) {
-                parent.removeChild(imageNode);
-            }
-            if (parent.children.indexOf(shapeLayer) >= 0) {
+            // 5. 将蒙版组添加到父容器
+            // 形状图层已经自动从父容器移除（因为添加到了组中）
+            // 获取形状图层原来的位置索引，在相同位置插入蒙版组
+            const shapeIndex = parent.children.indexOf(shapeLayer);
+            if (shapeIndex >= 0) {
+                // 如果形状还在父容器中（不应该发生），先移除
                 parent.removeChild(shapeLayer);
+                parent.insertChild(shapeIndex, maskGroup);
+            } else {
+                // 形状已经不在父容器中（已添加到组），直接添加组
+                parent.appendChild(maskGroup);
             }
-            // 添加蒙版组
-            parent.appendChild(maskGroup);
             
             console.log(`蒙版组创建成功，图片 ${imageIndex + 1}/${currentShapeLayers.length} 处理完成`);
             
