@@ -240,9 +240,26 @@ mg.ui.onmessage = async (msg) => {
             const referenceLayer = currentShapeLayers[imageIndex];
             const style = shapeStyles[imageIndex];
             
-            // 获取当前页面和父容器（使用参考图层的父容器）
+            // 获取当前页面（始终添加到当前页面，不修改原始图层）
             const currentPage = mg.document.currentPage;
-            const parent = referenceLayer.parent || currentPage;
+            
+            // 计算参考图层的绝对位置（考虑父容器的位置）
+            let absoluteX = referenceLayer.x || style.x || 0;
+            let absoluteY = referenceLayer.y || style.y || 0;
+            
+            // 如果参考图层有父容器，需要累加父容器的位置
+            let parentNode = referenceLayer.parent;
+            while (parentNode && parentNode !== currentPage) {
+                if (parentNode.x !== undefined) {
+                    absoluteX += parentNode.x;
+                }
+                if (parentNode.y !== undefined) {
+                    absoluteY += parentNode.y;
+                }
+                parentNode = parentNode.parent;
+            }
+            
+            console.log(`参考图层位置: (${referenceLayer.x}, ${referenceLayer.y}), 绝对位置: (${absoluteX}, ${absoluteY})`);
             
             // 将普通数组转换为 Uint8Array
             const imageData = new Uint8Array(imageDataArray);
@@ -251,20 +268,17 @@ mg.ui.onmessage = async (msg) => {
             console.log(`创建图片 ${imageIndex}，数据长度: ${imageData.length}`);
             const imageHandle = await mg.createImage(imageData);
             
-            // 获取参考图层的尺寸和位置（使用参考图层的实际位置）
+            // 获取参考图层的尺寸
             const imageWidth = referenceLayer.width || style.width || 120;
             const imageHeight = referenceLayer.height || style.height || 120;
-            // 使用参考图层的绝对位置，确保新组放在正确位置
-            const imageX = referenceLayer.x || style.x || 0;
-            const imageY = referenceLayer.y || style.y || 0;
             
-            console.log(`创建图片图层，尺寸: ${imageWidth}×${imageHeight}，位置: (${imageX}, ${imageY})`);
+            console.log(`创建图片图层，尺寸: ${imageWidth}×${imageHeight}，绝对位置: (${absoluteX}, ${absoluteY})`);
             
-            // 1. 创建组（Frame）
+            // 1. 创建组（Frame）- 使用绝对位置
             console.log(`创建蒙版组`);
             const group = mg.createFrame();
-            group.x = imageX;
-            group.y = imageY;
+            group.x = absoluteX;
+            group.y = absoluteY;
             group.width = imageWidth;
             group.height = imageHeight;
             
@@ -342,13 +356,11 @@ mg.ui.onmessage = async (msg) => {
             
             console.log(`形状蒙版图层创建成功`);
             
-            // 6. 将组添加到父容器（参考图层的父容器）
-            // 确保不修改原始图层，只添加新组
-            parent.appendChild(group);
+            // 6. 将组添加到当前页面（不修改原始图层）
+            // 确保新组添加到页面层级，而不是参考图层的父容器
+            currentPage.appendChild(group);
             
-            console.log(`蒙版组已添加到父容器，父容器类型: ${parent.type || 'unknown'}`);
-            
-            console.log(`蒙版组已添加到父容器，位置: (${imageX}, ${imageY})`);
+            console.log(`蒙版组已添加到当前页面，位置: (${absoluteX}, ${absoluteY})`);
             
             console.log(`蒙版组创建成功，图片 ${imageIndex + 1}/${currentShapeLayers.length} 处理完成`);
             
