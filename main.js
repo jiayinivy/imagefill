@@ -242,23 +242,13 @@ mg.ui.onmessage = async (msg) => {
             console.log(`创建图片对象，数据长度: ${imageData.length}`);
             const imageHandle = await mg.createImage(imageData);
             
-            // 1. 创建蒙版组（Frame）
-            // 先创建组，然后将图片和形状添加到组中
-            const maskGroup = mg.createFrame();
-            maskGroup.x = shapeX;
-            maskGroup.y = shapeY;
-            maskGroup.width = shapeWidth;
-            maskGroup.height = shapeHeight;
-            
-            console.log(`创建蒙版组，位置: (${shapeX}, ${shapeY})，尺寸: ${shapeWidth}×${shapeHeight})`);
-            
-            // 2. 创建图片图层（在组内，与形状图层在同一容器）
+            // 1. 创建图片图层（与形状图层在同一容器，位置居中对齐）
             // 图片尺寸：保持原始比例，缩放至短边刚好覆盖整个形状区域（object-fit: cover）
             // MasterGo 的 FILL 模式会自动实现此效果，并居中对齐
             const imageNode = mg.createRectangle();
-            // 图片在组内的相对位置：居中对齐（0, 0，与形状图层位置相同）
-            imageNode.x = 0;
-            imageNode.y = 0;
+            // 图片位置与形状图层位置相同，实现居中对齐
+            imageNode.x = shapeX;
+            imageNode.y = shapeY;
             imageNode.width = shapeWidth;
             imageNode.height = shapeHeight;
             
@@ -269,53 +259,51 @@ mg.ui.onmessage = async (msg) => {
                 imageRef: imageHandle.href
             }];
             
-            console.log(`图片图层创建成功，在组内位置: (0, 0)`);
+            console.log(`图片图层创建成功，位置: (${shapeX}, ${shapeY})，与形状图层居中对齐`);
             
-            // 3. 将形状和图片添加到组中
-            // 顺序：先添加形状（在下），再添加图片（在上）
-            // 注意：当图层添加到组中时，会自动从原父容器移除
-            // 形状图层在图片图层下方（在图层列表中）
-            maskGroup.appendChild(shapeLayer);
-            maskGroup.appendChild(imageNode);
+            // 2. 将图片图层添加到父容器（在形状图层上方）
+            // 获取形状图层在父容器中的索引
+            const shapeIndex = parent.children.indexOf(shapeLayer);
+            if (shapeIndex >= 0) {
+                // 在形状图层之后插入图片图层（图片在上方）
+                parent.insertChild(shapeIndex + 1, imageNode);
+            } else {
+                // 如果找不到索引，直接添加到末尾
+                parent.appendChild(imageNode);
+            }
             
-            console.log(`形状和图片已添加到蒙版组（形状在下，图片在上）`);
+            console.log(`图片图层已添加到形状图层上方`);
             
-            // 4. 设置形状图层为蒙版
+            // 3. 设置形状图层为蒙版（作用于图片图层）
             // 根据 MasterGo API，设置蒙版的方式
             try {
-                if (maskGroup.mask !== undefined) {
-                    maskGroup.mask = shapeLayer;
+                // 方式1：设置图片图层的 mask 属性指向形状图层
+                if (imageNode.mask !== undefined) {
+                    imageNode.mask = shapeLayer;
                 }
+                // 方式2：设置形状图层的 isMask 属性
                 if (shapeLayer.isMask !== undefined) {
                     shapeLayer.isMask = true;
                 }
+                // 方式3：调用形状图层的 setAsMask 方法
                 if (shapeLayer.setAsMask && typeof shapeLayer.setAsMask === 'function') {
                     shapeLayer.setAsMask();
                 }
-                maskGroup.clipsContent = true;
             } catch (e) {
                 console.warn('设置蒙版时出错，尝试其他方式:', e);
                 try {
-                    maskGroup.mask = shapeLayer;
+                    // 尝试直接设置图片的 mask 属性
+                    if (imageNode.mask !== undefined) {
+                        imageNode.mask = shapeLayer;
+                    }
                 } catch (e2) {
                     console.error('无法设置蒙版:', e2);
                 }
             }
             
-            // 5. 将蒙版组添加到父容器（与形状图层在同一容器）
-            // 形状图层已经自动从父容器移除（因为添加到了组中）
-            // 获取形状图层原来的位置索引，在相同位置插入蒙版组
-            const originalShapeIndex = parent.children.indexOf(shapeLayer);
-            if (originalShapeIndex >= 0) {
-                // 如果形状还在父容器中，先移除，然后在相同位置插入组
-                parent.removeChild(shapeLayer);
-                parent.insertChild(originalShapeIndex, maskGroup);
-            } else {
-                // 形状已经不在父容器中（已添加到组），直接添加组到父容器
-                parent.appendChild(maskGroup);
-            }
+            console.log(`形状图层已设置为图片图层的蒙版`);
             
-            console.log(`蒙版组创建成功，图片 ${imageIndex + 1}/${currentShapeLayers.length} 处理完成`);
+            console.log(`图片图层和形状图层已创建并居中对齐，形状图层设置为蒙版，图片 ${imageIndex + 1}/${currentShapeLayers.length} 处理完成`);
             
             // 检查是否所有图片都已处理
             // 注意：imageIndex 是从 0 开始的，所以最后一个索引是 length - 1
@@ -325,9 +313,9 @@ mg.ui.onmessage = async (msg) => {
             if (isLastImage) {
                 // 发送成功消息
                 console.log('所有图层处理完成，发送成功消息');
-                mg.ui.postMessage({ type: 'success', message: `成功创建${currentShapeLayers.length}个图片蒙版组` });
+                mg.ui.postMessage({ type: 'success', message: `成功创建${currentShapeLayers.length}个图片图层，形状图层已设置为蒙版` });
                 if (mg.notify) {
-                    mg.notify(`成功创建${currentShapeLayers.length}个图片蒙版组`);
+                    mg.notify(`成功创建${currentShapeLayers.length}个图片图层，形状图层已设置为蒙版`);
                 }
                 console.log('成功消息已发送');
                 // 清空图层引用
