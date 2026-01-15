@@ -2,7 +2,7 @@
   "name": "imagefill-proxy",
   "version": "1.0.0",
   "description": "MasterGo图片填充插件 - Vercel代理服务器",
-  "main": "api/qwen-proxy.js",
+  "main": "api/unsplash-proxy.js",
   "scripts": {
     "dev": "vercel dev",
     "deploy": "vercel --prod"

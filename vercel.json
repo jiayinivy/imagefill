@@ -1,6 +1,6 @@
 {
   "functions": {
-    "api/qwen-proxy.js": {
+    "api/unsplash-proxy.js": {
       "maxDuration": 30
     }
   },
