@@ -263,9 +263,9 @@ mg.ui.onmessage = async (msg) => {
             console.log(`形状图层父容器位置: (${shapeParent.x || 0}, ${shapeParent.y || 0})`);
             
             // 决定将图片添加到哪个容器
-            // 为了确保图片和形状都在画布的可见区域内，将图片添加到当前页面（PAGE）
-            // 使用绝对位置，确保图片和形状居中对齐
-            const targetParent = currentPage;
+            // 为了实现蒙版效果，图片和形状必须在同一个容器内
+            // 将图片添加到形状图层的父容器（FRAME），使用相对位置
+            const targetParent = shapeParent;
             
             // 将普通数组转换为 Uint8Array
             const imageData = new Uint8Array(imageDataArray);
@@ -274,13 +274,13 @@ mg.ui.onmessage = async (msg) => {
             console.log(`创建图片对象，数据长度: ${imageData.length}`);
             const imageHandle = await mg.createImage(imageData);
             
-            // 1. 创建图片图层（添加到当前页面，使用绝对位置，与形状图层居中对齐）
+            // 1. 创建图片图层（添加到形状图层的父容器，使用相对位置，与形状图层居中对齐）
             // 图片尺寸：保持原始比例，缩放至短边刚好覆盖整个形状区域（object-fit: cover）
             // MasterGo 的 FILL 模式会自动实现此效果，并居中对齐
             const imageNode = mg.createRectangle();
-            // 使用绝对位置（相对于页面），与形状图层居中对齐
-            imageNode.x = absoluteX;
-            imageNode.y = absoluteY;
+            // 使用相对位置（相对于父容器），与形状图层在父容器中的位置相同，实现居中对齐
+            imageNode.x = shapeX;
+            imageNode.y = shapeY;
             imageNode.width = shapeWidth;
             imageNode.height = shapeHeight;
             
@@ -291,24 +291,33 @@ mg.ui.onmessage = async (msg) => {
                 imageRef: imageHandle.href
             }];
             
-            console.log(`图片图层创建成功，绝对位置: (${absoluteX}, ${absoluteY})，尺寸: ${shapeWidth}×${shapeHeight}`);
+            console.log(`图片图层创建成功，在父容器中的相对位置: (${shapeX}, ${shapeY})，尺寸: ${shapeWidth}×${shapeHeight}`);
             
-            // 2. 将图片图层添加到当前页面（确保在画布的可见区域内）
-            // 图片图层添加到页面末尾
-            currentPage.appendChild(imageNode);
-            console.log(`图片图层已添加到当前页面（PAGE）`);
+            // 2. 将图片图层添加到形状图层的父容器（确保在同一容器内，才能设置蒙版）
+            // 获取形状图层在父容器中的索引
+            const shapeIndex = targetParent.children.indexOf(shapeLayer);
+            if (shapeIndex >= 0) {
+                // 在形状图层之后插入图片图层（图片在上方）
+                targetParent.insertChild(shapeIndex + 1, imageNode);
+                console.log(`图片图层已插入到父容器，索引: ${shapeIndex + 1}，形状图层索引: ${shapeIndex}`);
+            } else {
+                // 如果找不到索引，直接添加到父容器末尾
+                targetParent.appendChild(imageNode);
+                console.log(`图片图层已添加到父容器末尾`);
+            }
             
-            // 验证图片图层是否成功添加到页面
-            const imageIndexInPage = currentPage.children.indexOf(imageNode);
-            console.log(`验证: 图片图层在页面索引: ${imageIndexInPage}`);
+            // 验证图片图层是否成功添加到父容器
+            const imageIndexInParent = targetParent.children.indexOf(imageNode);
+            const shapeIndexInParent = targetParent.children.indexOf(shapeLayer);
+            console.log(`验证: 图片图层在父容器索引: ${imageIndexInParent}，形状图层在父容器索引: ${shapeIndexInParent}`);
             
-            if (imageIndexInPage < 0) {
-                console.error('图片图层未能成功添加到页面');
-                mg.ui.postMessage({ type: 'error', message: '图片图层未能成功添加到页面' });
+            if (imageIndexInParent < 0) {
+                console.error('图片图层未能成功添加到父容器');
+                mg.ui.postMessage({ type: 'error', message: '图片图层未能成功添加到父容器' });
                 return;
             }
             
-            console.log(`图片图层已成功添加到当前页面，与形状图层居中对齐（绝对位置相同）`);
+            console.log(`图片图层已成功添加到形状图层的父容器（${targetParent.type || 'unknown'}），两者在同一容器内`);
             
             // 3. 设置形状图层为蒙版（作用于图片图层）
             // 根据 MasterGo API，设置蒙版的方式
