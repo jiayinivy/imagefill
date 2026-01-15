@@ -340,6 +340,7 @@ mg.ui.onmessage = async (msg) => {
             
             console.log(`图片图层创建成功，设置尺寸: ${scaledWidth}×${scaledHeight}`);
             console.log(`形状图层位置: (${shapeX}, ${shapeY})，尺寸: ${shapeWidth}×${shapeHeight}`);
+            console.log(`计算出的图片居中位置: (${imageX}, ${imageY})`);
             
             // 4. 将图片图层添加到形状图层的父容器（确保在同一容器内，才能设置蒙版）
             // 获取形状图层在父容器中的索引
@@ -354,7 +355,14 @@ mg.ui.onmessage = async (msg) => {
                 console.log(`图片图层已添加到父容器末尾`);
             }
             
-            // 5. 添加到父容器后，再设置位置
+            // 5. 添加到父容器后，再设置位置（多次设置确保生效）
+            imageNode.x = imageX;
+            imageNode.y = imageY;
+            
+            // 等待一下，确保位置设置生效
+            await new Promise(resolve => setTimeout(resolve, 10));
+            
+            // 再次设置位置，确保正确
             imageNode.x = imageX;
             imageNode.y = imageY;
             
@@ -364,6 +372,22 @@ mg.ui.onmessage = async (msg) => {
             const actualX = imageNode.x;
             const actualY = imageNode.y;
             console.log(`图片图层实际位置: (${actualX}, ${actualY})，尺寸: ${imageNode.width}×${imageNode.height}`);
+            
+            // 如果位置仍然不对，尝试强制设置
+            if (Math.abs(actualX - imageX) > 1 || Math.abs(actualY - imageY) > 1) {
+                console.warn(`位置不匹配，尝试强制设置位置`);
+                // 尝试使用不同的方式设置位置
+                try {
+                    Object.defineProperty(imageNode, 'x', { value: imageX, writable: true, configurable: true });
+                    Object.defineProperty(imageNode, 'y', { value: imageY, writable: true, configurable: true });
+                } catch (e) {
+                    console.warn('无法使用defineProperty设置位置:', e);
+                }
+                // 再次尝试直接设置
+                imageNode.x = imageX;
+                imageNode.y = imageY;
+                console.log(`强制设置后的位置: (${imageNode.x}, ${imageNode.y})`);
+            }
             
             // 设置图片填充（使用 FILL 模式：保持比例，缩放至最小一边覆盖，超出部分会被蒙版裁剪）
             imageNode.fills = [{
