@@ -30,7 +30,7 @@ module.exports = async function handler(req, res) {
         }
 
         // Unsplash API配置
-        const accessKey = 'LRbxt00ShwcTdcoeJJujzoMW7ppZOK3uk5a6g7CXgF4o';
+        const accessKey = 'Rbxt00ShwcTdcoeJJujzoMW7ppZOK3uk5a6g7CXgF4o';
         const apiUrl = 'https://api.unsplash.com/search/photos';
 
         // 调用 Unsplash API 搜索图片
