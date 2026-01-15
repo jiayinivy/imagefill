@@ -229,6 +229,11 @@
 
     // 提交按钮点击事件
     submitBtn.addEventListener('click', function() {
+        // 如果按钮已禁用，说明正在处理中
+        if (submitBtn.disabled) {
+            return;
+        }
+        
         const keyword = searchInput.value.trim();
         if (!keyword) {
             showMessage('请输入搜索关键词', 'error');
@@ -313,7 +318,10 @@
             return;
         }
 
-        submitBtn.disabled = false;
+        // 只有在成功或错误时才重新启用按钮
+        if (msg.type === 'success' || msg.type === 'error') {
+            submitBtn.disabled = false;
+        }
 
         if (msg.type === 'loading') {
             showMessage(msg.message || '正在处理...', 'loading');
