@@ -240,6 +240,17 @@ mg.ui.onmessage = async (msg) => {
             console.log(`处理图片 ${imageIndex + 1}/${currentShapeLayers.length}`);
             console.log(`形状图层信息: 尺寸 ${shapeWidth}×${shapeHeight}，位置 (${shapeX}, ${shapeY})`);
             console.log(`形状图层父容器类型: ${parent.type || 'unknown'}`);
+            console.log(`形状图层父容器位置: (${parent.x || 0}, ${parent.y || 0})`);
+            console.log(`形状图层父容器尺寸: ${parent.width || 0}×${parent.height || 0}`);
+            
+            // 检查父容器是否在画布上（检查父容器的父容器）
+            const grandParent = parent.parent;
+            if (grandParent) {
+                console.log(`形状图层父容器的父容器类型: ${grandParent.type || 'unknown'}`);
+                console.log(`形状图层父容器的父容器位置: (${grandParent.x || 0}, ${grandParent.y || 0})`);
+            } else {
+                console.log(`形状图层父容器没有父容器（可能是顶层容器）`);
+            }
             
             // 将普通数组转换为 Uint8Array
             const imageData = new Uint8Array(imageDataArray);
