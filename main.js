@@ -446,46 +446,6 @@ mg.ui.onmessage = async (msg) => {
             
             console.log(`形状图层已设置为图片图层的蒙版`);
             
-            // 4. 将图片图层和形状图层组合成一个组（Group）
-            // 创建组（使用createGroup而不是createFrame）
-            let group;
-            try {
-                // 尝试使用createGroup方法
-                if (mg.createGroup && typeof mg.createGroup === 'function') {
-                    group = mg.createGroup();
-                } else {
-                    // 如果没有createGroup，使用createFrame但可能需要设置类型
-                    group = mg.createFrame();
-                }
-            } catch (e) {
-                console.warn('无法使用createGroup，使用createFrame:', e);
-                group = mg.createFrame();
-            }
-            
-            group.x = shapeX;
-            group.y = shapeY;
-            group.width = shapeWidth;
-            group.height = shapeHeight;
-            
-            // 获取形状图层在父容器中的原始索引（用于后续插入组）
-            // 注意：imageIndexInParent 和 shapeIndexInParent 已经在前面声明过了
-            const originalShapeIndex = shapeIndexInParent >= 0 ? shapeIndexInParent : imageIndexInParent;
-            
-            // 将图片和形状添加到组中（顺序：形状在下，图片在上）
-            group.appendChild(shapeLayer);
-            group.appendChild(imageNode);
-            
-            console.log(`图片和形状已添加到组中`);
-            
-            // 将组添加到父容器（替换原来的位置）
-            if (originalShapeIndex >= 0) {
-                targetParent.insertChild(originalShapeIndex, group);
-            } else {
-                targetParent.appendChild(group);
-            }
-            
-            console.log(`组已添加到父容器，索引: ${originalShapeIndex}`);
-            
             // 增加已处理图片计数
             processedImageCount++;
             console.log(`图片图层和形状图层已创建并居中对齐，形状图层设置为蒙版，图片 ${imageIndex + 1}/${currentShapeLayers.length} 处理完成`);
