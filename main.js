@@ -327,7 +327,23 @@ mg.ui.onmessage = async (msg) => {
             // 2. 创建图片图层（添加到形状图层的父容器，使用计算后的位置和尺寸）
             const imageNode = mg.createRectangle();
             
-            // 3. 先将图片图层添加到父容器（必须在设置位置之前添加，否则位置可能不正确）
+            // 先设置图片填充（在添加到父容器之前设置）
+            imageNode.fills = [{
+                type: 'IMAGE',
+                scaleMode: 'FILL', // FILL 模式：保持比例，缩放至最小一边覆盖，超出部分被裁剪
+                imageRef: imageHandle.href
+            }];
+            
+            // 3. 设置图片图层的位置和尺寸（在添加到父容器之前设置）
+            imageNode.x = imageX;
+            imageNode.y = imageY;
+            imageNode.width = scaledWidth;
+            imageNode.height = scaledHeight;
+            
+            console.log(`图片图层创建成功，设置位置: (${imageX}, ${imageY})，尺寸: ${scaledWidth}×${scaledHeight}`);
+            console.log(`形状图层位置: (${shapeX}, ${shapeY})，尺寸: ${shapeWidth}×${shapeHeight}`);
+            
+            // 4. 将图片图层添加到形状图层的父容器（确保在同一容器内，才能设置蒙版）
             // 获取形状图层在父容器中的索引
             const shapeIndex = targetParent.children.indexOf(shapeLayer);
             if (shapeIndex >= 0) {
@@ -340,12 +356,19 @@ mg.ui.onmessage = async (msg) => {
                 console.log(`图片图层已添加到父容器末尾`);
             }
             
-            // 4. 设置图片图层的位置和尺寸（在添加到父容器之后设置，确保位置正确）
-            // 确保位置和尺寸都是数字类型，避免精度问题
-            imageNode.x = imageX;
-            imageNode.y = imageY;
-            imageNode.width = scaledWidth;
-            imageNode.height = scaledHeight;
+            // 5. 验证并重新设置位置（确保位置正确）
+            // 读取实际位置，如果不对则重新设置
+            const actualX = imageNode.x;
+            const actualY = imageNode.y;
+            console.log(`图片图层添加到父容器后的实际位置: (${actualX}, ${actualY})`);
+            
+            // 如果位置不对，重新设置
+            if (Math.abs(actualX - imageX) > 0.1 || Math.abs(actualY - imageY) > 0.1) {
+                console.log(`位置不匹配，重新设置位置`);
+                imageNode.x = imageX;
+                imageNode.y = imageY;
+                console.log(`重新设置后的位置: (${imageNode.x}, ${imageNode.y})`);
+            }
             
             // 设置图片填充（使用 FILL 模式：保持比例，缩放至最小一边覆盖，超出部分会被蒙版裁剪）
             imageNode.fills = [{
