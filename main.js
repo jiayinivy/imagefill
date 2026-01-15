@@ -310,18 +310,43 @@ mg.ui.onmessage = async (msg) => {
             // 先添加到组中，再设置蒙版关系
             
             // 4. 将图层添加到组中：先添加图片（在下），再添加形状（在上，作为蒙版）
+            // 注意：在 MasterGo 中，蒙版图层应该在最后添加
             group.appendChild(imageNode);
             group.appendChild(maskNode);
             
             // 5. 设置蒙版关系（形状图层作为蒙版）
-            // 根据 MasterGo API，可能需要设置 group.mask 属性
-            group.mask = maskNode;
-            group.clipsContent = true;
+            // 根据 MasterGo API，设置蒙版的方式：
+            // 方式1：设置 group.mask 属性指向蒙版图层
+            // 方式2：设置 maskNode.isMask = true（如果支持）
+            // 方式3：使用 maskNode.setAsMask() 方法（如果存在）
+            try {
+                if (group.mask !== undefined) {
+                    group.mask = maskNode;
+                }
+                if (maskNode.isMask !== undefined) {
+                    maskNode.isMask = true;
+                }
+                if (maskNode.setAsMask && typeof maskNode.setAsMask === 'function') {
+                    maskNode.setAsMask();
+                }
+                group.clipsContent = true;
+            } catch (e) {
+                console.warn('设置蒙版时出错，尝试其他方式:', e);
+                // 如果上述方式都不行，尝试直接设置属性
+                try {
+                    group.mask = maskNode;
+                } catch (e2) {
+                    console.error('无法设置蒙版:', e2);
+                }
+            }
             
             console.log(`形状蒙版图层创建成功`);
             
             // 6. 将组添加到父容器（参考图层的父容器）
+            // 确保不修改原始图层，只添加新组
             parent.appendChild(group);
+            
+            console.log(`蒙版组已添加到父容器，父容器类型: ${parent.type || 'unknown'}`);
             
             console.log(`蒙版组已添加到父容器，位置: (${imageX}, ${imageY})`);
             
