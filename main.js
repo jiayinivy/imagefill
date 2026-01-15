@@ -294,10 +294,11 @@ mg.ui.onmessage = async (msg) => {
             let imageY = shapeY;
             
             if (imageWidth > 0 && imageHeight > 0) {
-                // 计算缩放比例：保持比例，适应形状尺寸（不裁剪）
+                // 计算缩放比例：保持比例，缩放至短边刚好覆盖整个形状区域
                 const scaleX = shapeWidth / imageWidth;
                 const scaleY = shapeHeight / imageHeight;
-                const scale = Math.min(scaleX, scaleY); // 取较小的缩放比例，确保不超出
+                // 取较大的缩放比例，让短边刚好覆盖（长边会超出，但会被蒙版裁剪）
+                const scale = Math.max(scaleX, scaleY);
                 
                 // 计算缩放后的尺寸
                 scaledWidth = imageWidth * scale;
@@ -308,7 +309,8 @@ mg.ui.onmessage = async (msg) => {
                 imageY = shapeY + (shapeHeight - scaledHeight) / 2;
                 
                 console.log(`图片原始尺寸: ${imageWidth}×${imageHeight}`);
-                console.log(`缩放比例: ${scale.toFixed(4)}`);
+                console.log(`缩放比例 X: ${scaleX.toFixed(4)}, Y: ${scaleY.toFixed(4)}`);
+                console.log(`使用缩放比例: ${scale.toFixed(4)} (短边覆盖)`);
                 console.log(`缩放后尺寸: ${scaledWidth.toFixed(2)}×${scaledHeight.toFixed(2)}`);
                 console.log(`居中位置: (${imageX.toFixed(2)}, ${imageY.toFixed(2)})`);
             } else {
@@ -322,10 +324,10 @@ mg.ui.onmessage = async (msg) => {
             imageNode.width = scaledWidth;
             imageNode.height = scaledHeight;
             
-            // 设置图片填充（使用 FIT 模式：保持比例，不裁剪）
+            // 设置图片填充（使用 FILL 模式：保持比例，缩放至最小一边覆盖，超出部分会被蒙版裁剪）
             imageNode.fills = [{
                 type: 'IMAGE',
-                scaleMode: 'FIT', // FIT 模式：保持比例，不裁剪，适应容器
+                scaleMode: 'FILL', // FILL 模式：保持比例，缩放至最小一边覆盖，超出部分被裁剪
                 imageRef: imageHandle.href
             }];
             
