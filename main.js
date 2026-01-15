@@ -3,8 +3,8 @@ console.log('插件初始化开始...');
 mg.showUI(__html__)
 console.log('插件UI已显示');
 
-// 获取选中的文字图层
-function getSelectedTextLayers() {
+// 获取选中的形状图层（排除文本图层）
+function getSelectedShapeLayers() {
     try {
         console.log('开始获取选中图层...');
         
@@ -51,73 +51,32 @@ function getSelectedTextLayers() {
             return [];
         }
         
-        // 筛选出文字图层
-        const textLayers = [];
+        // 过滤出形状图层（排除文本图层）
+        const shapeLayers = [];
         for (let i = 0; i < selection.length; i++) {
             try {
                 const node = selection[i];
                 if (!node) continue;
                 
-                // 安全地检查节点类型
-                let nodeType = null;
-                try {
-                    nodeType = node.type;
-                } catch (e) {
-                    // 如果无法获取 type，尝试其他方式
-                }
-                
-                // 检查是否为文字图层
-                // MasterGo 中文字图层的 type 可能是 'TEXT' 或其他值
-                // 也可以通过检查是否有 characters 属性来判断
-                let isTextLayer = false;
-                
-                if (nodeType === 'TEXT' || nodeType === 'text') {
-                    isTextLayer = true;
-                } else {
-                    // 尝试检查是否有 characters 属性（文字图层的特征）
-                    try {
-                        if (node.characters !== undefined) {
-                            isTextLayer = true;
-                        }
-                    } catch (e) {
-                        // 忽略错误
+                // 检查节点类型，排除文本图层
+                const nodeType = node.type;
+                if (nodeType && nodeType !== 'TEXT' && nodeType !== 'text') {
+                    // 检查是否有 fills 属性（形状图层通常有 fills 属性）
+                    if (node.fills !== undefined) {
+                        shapeLayers.push(node);
+                        console.log(`添加形状图层 ${i}，类型: ${nodeType}`);
                     }
                 }
-                
-                if (isTextLayer) {
-                    textLayers.push(node);
-                    console.log('找到文字图层:', i, nodeType || 'unknown');
-                } else {
-                    console.log('跳过非文字图层:', i, nodeType || 'unknown');
-                }
             } catch (e) {
-                console.log('检查节点时出错:', e.message);
+                console.log('处理节点时出错:', e.message);
             }
         }
         
-        console.log('筛选后的文字图层数量:', textLayers.length);
-        return textLayers;
+        console.log('筛选后的形状图层数量:', shapeLayers.length);
+        return shapeLayers;
     } catch (error) {
         console.error('获取选中图层失败:', error.message);
         return [];
-    }
-}
-
-// 替换文字图层内容
-function replaceTextLayerContent(layer, text) {
-    try {
-        if (layer.characters !== undefined) {
-            layer.characters = text;
-        } else if (layer.setText) {
-            layer.setText(text);
-        } else if (layer.text) {
-            layer.text = text;
-        } else {
-            throw new Error('无法修改文字图层内容');
-        }
-    } catch (error) {
-        console.error('替换文字图层内容失败:', error);
-        throw error;
     }
 }
 
@@ -139,32 +98,34 @@ mg.ui.onmessage = async (msg) => {
     console.log('消息类型字段:', actualMsg.type);
     
     if (actualMsg.type === 'submit') {
-        console.log('处理提交请求，描述:', actualMsg.text);
-        const description = actualMsg.text;
+        console.log('处理提交请求，关键词:', actualMsg.keyword);
+        const keyword = actualMsg.keyword;
+        const fillMode = actualMsg.fillMode || 'FILL';
         
         // 发送加载状态
         mg.ui.postMessage({ type: 'loading', message: '正在处理...' });
         
         try {
-            // 1. 获取选中的文字图层
-            const textLayers = getSelectedTextLayers();
+            // 1. 获取选中的形状图层
+            const shapeLayers = getSelectedShapeLayers();
             
-            if (textLayers.length === 0) {
-                mg.ui.postMessage({ type: 'error', message: '请先选中文字图层' });
+            if (shapeLayers.length === 0) {
+                mg.ui.postMessage({ type: 'error', message: '请先选中形状图层（矩形、圆形等）' });
                 if (mg.notify) {
-                    mg.notify('请先选中文字图层');
+                    mg.notify('请先选中形状图层（矩形、圆形等）');
                 }
                 return;
             }
             
-            const count = textLayers.length;
+            const count = shapeLayers.length;
             
-            // 2. 请求 UI 调用 API 生成文本（因为主线程无法使用 fetch）
+            // 2. 请求 UI 调用 API 搜索图片（因为主线程无法使用 fetch）
             console.log('准备请求UI调用API，选中图层数量:', count);
             const requestMessage = { 
                 type: 'request-api', 
-                description: description, 
-                count: count 
+                keyword: keyword,
+                count: count,
+                fillMode: fillMode
             };
             console.log('主线程发送消息给UI:', JSON.stringify(requestMessage));
             mg.ui.postMessage(requestMessage);
@@ -194,7 +155,7 @@ mg.ui.onmessage = async (msg) => {
             return;
         }
         
-        if (!actualMsg.texts || !Array.isArray(actualMsg.texts)) {
+        if (!actualMsg.images || !Array.isArray(actualMsg.images)) {
             console.error('API返回数据格式错误:', actualMsg);
             const errorMsg = 'API返回数据格式错误';
             mg.ui.postMessage({ type: 'error', message: errorMsg });
@@ -204,17 +165,17 @@ mg.ui.onmessage = async (msg) => {
             return;
         }
         
-        console.log('API返回文本数组:', actualMsg.texts);
-        console.log('文本数量:', actualMsg.texts.length);
+        console.log('API返回图片数组:', actualMsg.images);
+        console.log('图片数量:', actualMsg.images.length);
         
-        // 获取选中的文字图层
-        console.log('开始获取选中的文字图层...');
-        const textLayers = getSelectedTextLayers();
-        console.log('获取到的文字图层数量:', textLayers.length);
+        // 获取选中的形状图层
+        console.log('开始获取选中的形状图层...');
+        const shapeLayers = getSelectedShapeLayers();
+        console.log('获取到的形状图层数量:', shapeLayers.length);
         
-        if (textLayers.length === 0) {
-            console.error('未找到选中的文字图层');
-            const errorMsg = '未找到选中的文字图层';
+        if (shapeLayers.length === 0) {
+            console.error('未找到选中的形状图层');
+            const errorMsg = '未找到选中的形状图层';
             mg.ui.postMessage({ type: 'error', message: errorMsg });
             if (mg.notify) {
                 mg.notify(errorMsg);
@@ -222,24 +183,84 @@ mg.ui.onmessage = async (msg) => {
             return;
         }
         
-        // 替换文字图层内容
-        console.log('开始替换文字图层内容...');
-        for (let i = 0; i < textLayers.length && i < actualMsg.texts.length; i++) {
-            try {
-                console.log(`准备替换图层 ${i}，文本: ${actualMsg.texts[i]}`);
-                replaceTextLayerContent(textLayers[i], actualMsg.texts[i]);
-                console.log(`替换图层 ${i} 成功: ${actualMsg.texts[i]}`);
-            } catch (e) {
-                console.error(`替换图层 ${i} 失败:`, e.message, e.stack);
+        const fillMode = actualMsg.fillMode || 'FILL';
+        
+        // 请求 UI 下载图片数据
+        console.log('请求UI下载图片数据...');
+        mg.ui.postMessage({
+            type: 'download-images',
+            images: actualMsg.images,
+            fillMode: fillMode
+        });
+    }
+    
+    // 处理来自 UI 的图片数据
+    if (actualMsg.type === 'image-data') {
+        console.log('收到图片数据:', actualMsg);
+        
+        try {
+            const shapeLayers = getSelectedShapeLayers();
+            const imageDataArray = actualMsg.imageData; // 普通数组
+            const fillMode = actualMsg.fillMode || 'FILL';
+            const imageIndex = actualMsg.index || 0;
+            
+            if (imageIndex >= shapeLayers.length) {
+                console.log('图片索引超出范围');
+                return;
+            }
+            
+            const layer = shapeLayers[imageIndex];
+            
+            // 将普通数组转换为 Uint8Array
+            const imageData = new Uint8Array(imageDataArray);
+            
+            // 创建图片对象
+            console.log(`创建图片 ${imageIndex}，数据长度: ${imageData.length}`);
+            const imageHandle = await mg.createImage(imageData);
+            
+            // 设置图片填充（Image as Mask）
+            console.log(`设置图层 ${imageIndex} 的图片填充，模式: ${fillMode}`);
+            
+            // 克隆 fills 数组
+            const newFills = JSON.parse(JSON.stringify(layer.fills || []));
+            
+            // 创建图片填充对象
+            const imageFill = {
+                type: 'IMAGE',
+                scaleMode: fillMode, // FILL, STRETCH, TILE
+                imageRef: imageHandle.href
+            };
+            
+            // 替换或添加图片填充
+            // 如果已有图片填充，替换第一个；否则添加
+            const imageFillIndex = newFills.findIndex(fill => fill.type === 'IMAGE');
+            if (imageFillIndex >= 0) {
+                newFills[imageFillIndex] = imageFill;
+            } else {
+                newFills.unshift(imageFill); // 添加到最前面
+            }
+            
+            layer.fills = newFills;
+            
+            console.log(`图层 ${imageIndex} 填充成功`);
+            
+            // 检查是否所有图片都已处理
+            if (imageIndex === shapeLayers.length - 1) {
+                // 发送成功消息
+                console.log('所有图层填充完成，发送成功消息');
+                mg.ui.postMessage({ type: 'success', message: `成功填充${shapeLayers.length}个形状图层` });
+                if (mg.notify) {
+                    mg.notify(`成功填充${shapeLayers.length}个形状图层`);
+                }
+                console.log('成功消息已发送');
+            }
+            
+        } catch (error) {
+            console.error('处理图片数据失败:', error);
+            mg.ui.postMessage({ type: 'error', message: `填充失败: ${error.message}` });
+            if (mg.notify) {
+                mg.notify(`填充失败: ${error.message}`);
             }
         }
-        
-        // 发送成功消息
-        console.log('所有图层替换完成，发送成功消息');
-        mg.ui.postMessage({ type: 'success', message: `成功填充${actualMsg.texts.length}个文字图层` });
-        if (mg.notify) {
-            mg.notify(`成功填充${actualMsg.texts.length}个文字图层`);
-        }
-        console.log('成功消息已发送');
     }
 }
