@@ -7,6 +7,8 @@ console.log('插件UI已显示');
 let currentShapeLayers = [];
 // 保存形状样式信息（尺寸、圆角、类型等）
 let shapeStyles = [];
+// 处理状态标志，防止在处理过程中切换选中对象
+let isProcessing = false;
 
 // 获取选中的形状图层（排除文本图层）
 function getSelectedShapeLayers() {
@@ -122,16 +124,30 @@ mg.ui.onmessage = async (msg) => {
         const keyword = actualMsg.keyword;
         const fillMode = actualMsg.fillMode || 'FILL';
         
+        // 检查是否正在处理中
+        if (isProcessing) {
+            console.warn('正在处理中，忽略新的提交请求');
+            mg.ui.postMessage({ type: 'error', message: '正在处理中，请等待完成' });
+            if (mg.notify) {
+                mg.notify('正在处理中，请等待完成');
+            }
+            return;
+        }
+        
         // 发送加载状态
         mg.ui.postMessage({ type: 'loading', message: '正在处理...' });
         
         try {
+            // 设置处理状态
+            isProcessing = true;
+            
             // 1. 获取选中的形状图层和样式信息
             const result = getSelectedShapeLayers();
             const shapeLayers = result.layers;
             const styles = result.styles;
             
             if (shapeLayers.length === 0) {
+                isProcessing = false;
                 mg.ui.postMessage({ type: 'error', message: '请先选中形状图层（矩形、圆形等）' });
                 if (mg.notify) {
                     mg.notify('请先选中形状图层（矩形、圆形等）');
@@ -139,9 +155,9 @@ mg.ui.onmessage = async (msg) => {
                 return;
             }
             
-            // 保存图层引用和样式信息
-            currentShapeLayers = shapeLayers;
-            shapeStyles = styles;
+            // 保存图层引用和样式信息（深拷贝，避免引用被修改）
+            currentShapeLayers = shapeLayers.slice(); // 复制数组
+            shapeStyles = JSON.parse(JSON.stringify(styles)); // 深拷贝样式对象
             
             const count = shapeLayers.length;
             
@@ -194,8 +210,15 @@ mg.ui.onmessage = async (msg) => {
         console.log('API返回图片数组:', actualMsg.images);
         console.log('图片数量:', actualMsg.images.length);
         
+        // 验证处理状态和图层引用
+        if (!isProcessing) {
+            console.warn('收到API响应，但处理状态未激活');
+            return;
+        }
+        
         if (!currentShapeLayers || currentShapeLayers.length === 0) {
             console.error('图层引用已丢失');
+            isProcessing = false;
             const errorMsg = '图层引用已丢失，请重新选择图层并重试';
             mg.ui.postMessage({ type: 'error', message: errorMsg });
             if (mg.notify) {
@@ -208,6 +231,7 @@ mg.ui.onmessage = async (msg) => {
         
         // 请求 UI 下载图片数据
         console.log('请求UI下载图片数据...');
+        console.log('当前保存的图层数量:', currentShapeLayers.length);
         mg.ui.postMessage({
             type: 'download-images',
             images: actualMsg.images,
@@ -220,6 +244,12 @@ mg.ui.onmessage = async (msg) => {
     if (actualMsg.type === 'image-data') {
         console.log('收到图片数据:', actualMsg);
         
+        // 检查处理状态
+        if (!isProcessing) {
+            console.warn('收到图片数据，但处理状态未激活，可能已取消或重置');
+            return;
+        }
+        
         try {
             // 使用保存的图层引用，而不是重新获取
             const imageDataArray = actualMsg.imageData; // 普通数组
@@ -228,20 +258,36 @@ mg.ui.onmessage = async (msg) => {
             
             if (!currentShapeLayers || currentShapeLayers.length === 0) {
                 console.error('图层引用已丢失');
+                isProcessing = false;
                 mg.ui.postMessage({ type: 'error', message: '图层引用已丢失，请重新选择图层并重试' });
                 return;
             }
             
             if (imageIndex >= currentShapeLayers.length || imageIndex >= shapeStyles.length) {
-                console.log('图片索引超出范围:', imageIndex);
+                console.log('图片索引超出范围:', imageIndex, '当前图层数量:', currentShapeLayers.length);
+                // 如果是最后一个，重置状态
+                if (imageIndex >= currentShapeLayers.length) {
+                    isProcessing = false;
+                    currentShapeLayers = [];
+                    shapeStyles = [];
+                }
                 return;
             }
             
             const referenceLayer = currentShapeLayers[imageIndex];
             const style = shapeStyles[imageIndex];
             
-            // 获取当前页面和父容器
+            // 验证引用是否仍然有效
+            if (!referenceLayer || !style) {
+                console.error('图层引用或样式无效');
+                isProcessing = false;
+                mg.ui.postMessage({ type: 'error', message: '图层引用无效，请重新选择图层并重试' });
+                return;
+            }
+            
+            // 获取当前页面和父容器（使用保存的引用，不重新获取）
             const currentPage = mg.document.currentPage;
+            // 使用保存的引用图层的父容器，而不是重新获取选中图层
             const parent = referenceLayer.parent || currentPage;
             
             // 将普通数组转换为 Uint8Array
@@ -337,9 +383,10 @@ mg.ui.onmessage = async (msg) => {
                     mg.notify(`成功创建${currentShapeLayers.length}个图片蒙版组`);
                 }
                 console.log('成功消息已发送');
-                // 清空图层引用和样式
+                // 清空图层引用和样式，重置处理状态
                 currentShapeLayers = [];
                 shapeStyles = [];
+                isProcessing = false;
             }
             
         } catch (error) {
@@ -353,8 +400,10 @@ mg.ui.onmessage = async (msg) => {
                 if (mg.notify) {
                     mg.notify(`创建失败: ${error.message}`);
                 }
+                // 清空图层引用和样式，重置处理状态
                 currentShapeLayers = [];
                 shapeStyles = [];
+                isProcessing = false;
             } else {
                 // 不是最后一张，继续处理下一张，但记录错误
                 console.warn(`图片 ${imageIndex} 处理失败，但继续处理其他图片`);
