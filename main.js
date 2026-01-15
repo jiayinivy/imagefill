@@ -326,23 +326,8 @@ mg.ui.onmessage = async (msg) => {
             
             // 2. 创建图片图层（添加到形状图层的父容器，使用计算后的位置和尺寸）
             const imageNode = mg.createRectangle();
-            // 确保位置和尺寸都是数字类型，避免精度问题
-            imageNode.x = Math.round(imageX * 100) / 100; // 保留2位小数
-            imageNode.y = Math.round(imageY * 100) / 100;
-            imageNode.width = Math.round(scaledWidth * 100) / 100;
-            imageNode.height = Math.round(scaledHeight * 100) / 100;
             
-            // 设置图片填充（使用 FILL 模式：保持比例，缩放至最小一边覆盖，超出部分会被蒙版裁剪）
-            imageNode.fills = [{
-                type: 'IMAGE',
-                scaleMode: 'FILL', // FILL 模式：保持比例，缩放至最小一边覆盖，超出部分被裁剪
-                imageRef: imageHandle.href
-            }];
-            
-            console.log(`图片图层创建成功，位置: (${imageNode.x}, ${imageNode.y})，尺寸: ${imageNode.width}×${imageNode.height}`);
-            console.log(`形状图层位置: (${shapeX}, ${shapeY})，尺寸: ${shapeWidth}×${shapeHeight}`);
-            
-            // 3. 将图片图层添加到形状图层的父容器（确保在同一容器内，才能设置蒙版）
+            // 3. 先将图片图层添加到父容器（必须在设置位置之前添加，否则位置可能不正确）
             // 获取形状图层在父容器中的索引
             const shapeIndex = targetParent.children.indexOf(shapeLayer);
             if (shapeIndex >= 0) {
@@ -354,6 +339,23 @@ mg.ui.onmessage = async (msg) => {
                 targetParent.appendChild(imageNode);
                 console.log(`图片图层已添加到父容器末尾`);
             }
+            
+            // 4. 设置图片图层的位置和尺寸（在添加到父容器之后设置，确保位置正确）
+            // 确保位置和尺寸都是数字类型，避免精度问题
+            imageNode.x = imageX;
+            imageNode.y = imageY;
+            imageNode.width = scaledWidth;
+            imageNode.height = scaledHeight;
+            
+            // 设置图片填充（使用 FILL 模式：保持比例，缩放至最小一边覆盖，超出部分会被蒙版裁剪）
+            imageNode.fills = [{
+                type: 'IMAGE',
+                scaleMode: 'FILL', // FILL 模式：保持比例，缩放至最小一边覆盖，超出部分被裁剪
+                imageRef: imageHandle.href
+            }];
+            
+            console.log(`图片图层创建成功，位置: (${imageNode.x}, ${imageNode.y})，尺寸: ${imageNode.width}×${imageNode.height}`);
+            console.log(`形状图层位置: (${shapeX}, ${shapeY})，尺寸: ${shapeWidth}×${shapeHeight}`);
             
             // 验证图片图层是否成功添加到父容器
             const imageIndexInParent = targetParent.children.indexOf(imageNode);
