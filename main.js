@@ -284,4 +284,12 @@ mg.ui.onmessage = async (msg) => {
             }
         }
     }
+    
+    // 处理图片下载错误
+    if (actualMsg.type === 'image-error') {
+        console.error(`图片 ${actualMsg.index} 下载失败:`, actualMsg.error);
+        // 检查是否所有图片都已处理（包括失败的）
+        // 这里我们只记录错误，不影响其他图片的处理
+        // 如果所有图片都处理完成（包括失败的），会在最后一个 image-data 消息中处理
+    }
 }
