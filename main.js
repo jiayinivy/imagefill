@@ -229,11 +229,17 @@ mg.ui.onmessage = async (msg) => {
             const shapeX = shapeLayer.x || 0;
             const shapeY = shapeLayer.y || 0;
             
-            // 获取父容器
-            const currentPage = mg.document.currentPage;
-            const parent = shapeLayer.parent || currentPage;
+            // 获取形状图层的父容器（确保图片和形状在同一容器）
+            const parent = shapeLayer.parent;
+            if (!parent) {
+                console.error('无法获取形状图层的父容器');
+                mg.ui.postMessage({ type: 'error', message: '无法获取形状图层的父容器' });
+                return;
+            }
             
-            console.log(`处理图片 ${imageIndex + 1}/${currentShapeLayers.length}，形状尺寸: ${shapeWidth}×${shapeHeight}，位置: (${shapeX}, ${shapeY})`);
+            console.log(`处理图片 ${imageIndex + 1}/${currentShapeLayers.length}`);
+            console.log(`形状图层信息: 尺寸 ${shapeWidth}×${shapeHeight}，位置 (${shapeX}, ${shapeY})`);
+            console.log(`形状图层父容器类型: ${parent.type || 'unknown'}`);
             
             // 将普通数组转换为 Uint8Array
             const imageData = new Uint8Array(imageDataArray);
@@ -259,20 +265,33 @@ mg.ui.onmessage = async (msg) => {
                 imageRef: imageHandle.href
             }];
             
-            console.log(`图片图层创建成功，位置: (${shapeX}, ${shapeY})，与形状图层居中对齐`);
+            console.log(`图片图层创建成功，位置: (${shapeX}, ${shapeY})，尺寸: ${shapeWidth}×${shapeHeight}`);
             
-            // 2. 将图片图层添加到父容器（在形状图层上方）
+            // 2. 将图片图层添加到形状图层的父容器（确保在同一容器）
             // 获取形状图层在父容器中的索引
             const shapeIndex = parent.children.indexOf(shapeLayer);
             if (shapeIndex >= 0) {
                 // 在形状图层之后插入图片图层（图片在上方）
                 parent.insertChild(shapeIndex + 1, imageNode);
+                console.log(`图片图层已插入到父容器，索引: ${shapeIndex + 1}，形状图层索引: ${shapeIndex}`);
             } else {
-                // 如果找不到索引，直接添加到末尾
+                // 如果找不到索引，直接添加到父容器末尾
                 parent.appendChild(imageNode);
+                console.log(`图片图层已添加到父容器末尾`);
             }
             
-            console.log(`图片图层已添加到形状图层上方`);
+            // 验证图片图层是否成功添加到父容器
+            const imageIndexInParent = parent.children.indexOf(imageNode);
+            const shapeIndexInParent = parent.children.indexOf(shapeLayer);
+            console.log(`验证: 图片图层在父容器索引: ${imageIndexInParent}，形状图层在父容器索引: ${shapeIndexInParent}`);
+            
+            if (imageIndexInParent < 0) {
+                console.error('图片图层未能成功添加到父容器');
+                mg.ui.postMessage({ type: 'error', message: '图片图层未能成功添加到父容器' });
+                return;
+            }
+            
+            console.log(`图片图层已成功添加到形状图层的父容器`);
             
             // 3. 设置形状图层为蒙版（作用于图片图层）
             // 根据 MasterGo API，设置蒙版的方式
