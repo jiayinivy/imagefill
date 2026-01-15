@@ -5,6 +5,8 @@ console.log('插件UI已显示');
 
 // 保存当前处理的图层引用，避免异步处理时选中状态丢失
 let currentShapeLayers = [];
+// 跟踪已处理的图片数量
+let processedImageCount = 0;
 
 // 获取选中的形状图层（排除文本图层）
 function getSelectedShapeLayers() {
@@ -444,37 +446,42 @@ mg.ui.onmessage = async (msg) => {
             
             console.log(`形状图层已设置为图片图层的蒙版`);
             
+            // 增加已处理图片计数
+            processedImageCount++;
             console.log(`图片图层和形状图层已创建并居中对齐，形状图层设置为蒙版，图片 ${imageIndex + 1}/${currentShapeLayers.length} 处理完成`);
+            console.log(`已处理图片数量: ${processedImageCount}/${currentShapeLayers.length}`);
             
             // 检查是否所有图片都已处理
-            // 注意：imageIndex 是从 0 开始的，所以最后一个索引是 length - 1
-            const isLastImage = imageIndex === currentShapeLayers.length - 1;
-            console.log(`图片 ${imageIndex + 1}/${currentShapeLayers.length} 处理完成，是否最后一张: ${isLastImage}`);
-            
-            if (isLastImage) {
+            if (processedImageCount >= currentShapeLayers.length) {
                 // 发送成功消息
                 console.log('所有图层处理完成，发送成功消息');
-                mg.ui.postMessage({ type: 'success', message: `成功创建${currentShapeLayers.length}个图片图层，形状图层已设置为蒙版` });
+                mg.ui.postMessage({ type: 'success', message: `成功创建${processedImageCount}个图片图层，形状图层已设置为蒙版` });
                 if (mg.notify) {
-                    mg.notify(`成功创建${currentShapeLayers.length}个图片图层，形状图层已设置为蒙版`);
+                    mg.notify(`成功创建${processedImageCount}个图片图层，形状图层已设置为蒙版`);
                 }
                 console.log('成功消息已发送');
-                // 清空图层引用
+                // 清空图层引用和计数
                 currentShapeLayers = [];
+                processedImageCount = 0;
             }
             
         } catch (error) {
             console.error(`处理图片数据失败 (index: ${imageIndex}):`, error);
             console.error('错误堆栈:', error.stack);
             
-            // 即使出错，也检查是否所有图片都已处理
-            const isLastImage = imageIndex === currentShapeLayers.length - 1;
-            if (isLastImage) {
-                mg.ui.postMessage({ type: 'error', message: `创建失败: ${error.message}` });
+            // 增加已处理图片计数（即使失败也计数）
+            processedImageCount++;
+            console.log(`图片 ${imageIndex + 1} 处理失败，已处理数量: ${processedImageCount}/${currentShapeLayers.length}`);
+            
+            // 检查是否所有图片都已处理（包括失败的）
+            if (processedImageCount >= currentShapeLayers.length) {
+                mg.ui.postMessage({ type: 'error', message: `部分图片处理失败: ${error.message}` });
                 if (mg.notify) {
-                    mg.notify(`创建失败: ${error.message}`);
+                    mg.notify(`部分图片处理失败: ${error.message}`);
                 }
+                // 清空图层引用和计数
                 currentShapeLayers = [];
+                processedImageCount = 0;
             } else {
                 // 不是最后一张，继续处理下一张，但记录错误
                 console.warn(`图片 ${imageIndex} 处理失败，但继续处理其他图片`);
