@@ -103,7 +103,6 @@ mg.ui.onmessage = async (msg) => {
     if (actualMsg.type === 'submit') {
         console.log('处理提交请求，关键词:', actualMsg.keyword);
         const keyword = actualMsg.keyword;
-        const fillMode = actualMsg.fillMode || 'FILL';
         
         // 发送加载状态
         mg.ui.postMessage({ type: 'loading', message: '正在处理...' });
@@ -132,8 +131,7 @@ mg.ui.onmessage = async (msg) => {
             const requestMessage = { 
                 type: 'request-api', 
                 keyword: keyword,
-                count: count,
-                fillMode: fillMode
+                count: count
             };
             console.log('主线程发送消息给UI:', JSON.stringify(requestMessage));
             mg.ui.postMessage(requestMessage);
@@ -187,14 +185,11 @@ mg.ui.onmessage = async (msg) => {
             return;
         }
         
-        const fillMode = actualMsg.fillMode || 'FILL';
-        
         // 请求 UI 下载图片数据
         console.log('请求UI下载图片数据，使用已锁定的图层引用...');
         mg.ui.postMessage({
             type: 'download-images',
             images: actualMsg.images,
-            fillMode: fillMode,
             layerCount: currentShapeLayers.length
         });
     }
@@ -274,24 +269,67 @@ mg.ui.onmessage = async (msg) => {
             console.log(`创建图片对象，数据长度: ${imageData.length}`);
             const imageHandle = await mg.createImage(imageData);
             
-            // 1. 创建图片图层（添加到形状图层的父容器，使用相对位置，与形状图层居中对齐）
-            // 图片尺寸：保持原始比例，缩放至短边刚好覆盖整个形状区域（object-fit: cover）
-            // MasterGo 的 FILL 模式会自动实现此效果，并居中对齐
-            const imageNode = mg.createRectangle();
-            // 使用相对位置（相对于父容器），与形状图层在父容器中的位置相同，实现居中对齐
-            imageNode.x = shapeX;
-            imageNode.y = shapeY;
-            imageNode.width = shapeWidth;
-            imageNode.height = shapeHeight;
+            // 获取图片的原始尺寸（如果可用）
+            // 注意：MasterGo API 可能不直接提供图片尺寸，需要尝试获取
+            let imageWidth = 0;
+            let imageHeight = 0;
+            try {
+                // 尝试从 imageHandle 获取图片尺寸
+                if (imageHandle.width !== undefined && imageHandle.height !== undefined) {
+                    imageWidth = imageHandle.width;
+                    imageHeight = imageHandle.height;
+                } else if (imageHandle.size !== undefined) {
+                    imageWidth = imageHandle.size.width || 0;
+                    imageHeight = imageHandle.size.height || 0;
+                }
+            } catch (e) {
+                console.warn('无法获取图片原始尺寸:', e);
+            }
             
-            // 设置图片填充（使用 FILL 模式实现 object-fit: cover 效果）
+            // 1. 先计算缩放比例（保持原始比例，不裁剪）
+            // 如果无法获取图片尺寸，使用形状尺寸（后续由 MasterGo 自动处理）
+            let scaledWidth = shapeWidth;
+            let scaledHeight = shapeHeight;
+            let imageX = shapeX;
+            let imageY = shapeY;
+            
+            if (imageWidth > 0 && imageHeight > 0) {
+                // 计算缩放比例：保持比例，适应形状尺寸（不裁剪）
+                const scaleX = shapeWidth / imageWidth;
+                const scaleY = shapeHeight / imageHeight;
+                const scale = Math.min(scaleX, scaleY); // 取较小的缩放比例，确保不超出
+                
+                // 计算缩放后的尺寸
+                scaledWidth = imageWidth * scale;
+                scaledHeight = imageHeight * scale;
+                
+                // 计算居中位置
+                imageX = shapeX + (shapeWidth - scaledWidth) / 2;
+                imageY = shapeY + (shapeHeight - scaledHeight) / 2;
+                
+                console.log(`图片原始尺寸: ${imageWidth}×${imageHeight}`);
+                console.log(`缩放比例: ${scale.toFixed(4)}`);
+                console.log(`缩放后尺寸: ${scaledWidth.toFixed(2)}×${scaledHeight.toFixed(2)}`);
+                console.log(`居中位置: (${imageX.toFixed(2)}, ${imageY.toFixed(2)})`);
+            } else {
+                console.log(`无法获取图片原始尺寸，使用形状尺寸: ${shapeWidth}×${shapeHeight}`);
+            }
+            
+            // 2. 创建图片图层（添加到形状图层的父容器，使用计算后的位置和尺寸）
+            const imageNode = mg.createRectangle();
+            imageNode.x = imageX;
+            imageNode.y = imageY;
+            imageNode.width = scaledWidth;
+            imageNode.height = scaledHeight;
+            
+            // 设置图片填充（使用 FIT 模式：保持比例，不裁剪）
             imageNode.fills = [{
                 type: 'IMAGE',
-                scaleMode: 'FILL', // FILL 模式：保持比例，缩放至最小一边覆盖，居中对齐
+                scaleMode: 'FIT', // FIT 模式：保持比例，不裁剪，适应容器
                 imageRef: imageHandle.href
             }];
             
-            console.log(`图片图层创建成功，在父容器中的相对位置: (${shapeX}, ${shapeY})，尺寸: ${shapeWidth}×${shapeHeight}`);
+            console.log(`图片图层创建成功，位置: (${imageX.toFixed(2)}, ${imageY.toFixed(2)})，尺寸: ${scaledWidth.toFixed(2)}×${scaledHeight.toFixed(2)}`);
             
             // 2. 将图片图层添加到形状图层的父容器（确保在同一容器内，才能设置蒙版）
             // 获取形状图层在父容器中的索引
